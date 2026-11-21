@@ -1,34 +1,58 @@
 /**
  * The tradoor owl over a live chart, bottom left of its price pane, where the
- * engine leaves it to the page (`set_page_mark`): every ten seconds it gives a
- * short hop and a turn of the head, a moment's play with nothing running
- * between, and a click opens the partners' rewards. A picture of the chart
- * gets the owl stamped in the same corner (lib/capture-title).
+ * engine leaves it to the page (`set_page_mark`). It perches as the logo
+ * (mark.svg), and every ten seconds takes off: the flight sprite takes its
+ * place for three wingbeats through the four frames of public/owl-fly.svg (one
+ * picture, its frames side by side, set on the logo's face), a lift and a glide
+ * back down, and the logo again, with nothing running between. A click opens the
+ * partners' rewards. A picture of the chart gets the owl stamped in the same
+ * corner (lib/capture-title).
  */
 import { onCleanup, onMount } from 'solid-js';
 import { setOverlay } from '../app/ui';
 import { tl } from '../lib/i18n';
 
 const EVERY_MS = 10_000;
-const PLAY_MS = 1_400;
+const PLAY_MS = 1_500;
+/** The frame it lands on, wings level, before the logo is back. */
+const REST = 1;
+/** Up, level, down, level: three beats from the perch and back to it. */
+const BEATS = [2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1];
+const at = (frame: number) => `${(frame * 100) / 3}% 0`;
 /** Every mark on the page plays at once, from one clock. */
 const marks = new Set<() => void>();
 let clock: ReturnType<typeof setInterval> | undefined;
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function ChartMark(props: { x: number; y: number; paused: boolean }) {
-  let owl: HTMLImageElement | undefined;
+  let fly: HTMLSpanElement | undefined;
+  let owl: HTMLSpanElement | undefined;
+  let perch: HTMLImageElement | undefined;
   const play = () => {
-    if (props.paused || document.hidden || still() || !owl) return;
-    for (const a of owl.getAnimations()) a.cancel();
-    // Up off its perch, a look one way and the other, and down again.
+    if (props.paused || document.hidden || still() || !fly || !owl || !perch) return;
+    for (const el of [fly, owl, perch]) for (const a of el.getAnimations()) a.cancel();
+    const flying = PLAY_MS * 0.8;
+    // The sprite in the logo's place for the wingbeats, the logo back once it has landed.
+    const swap = (from: number, to: number): Keyframe[] => [
+      { opacity: from, offset: 0, easing: 'step-end' },
+      { opacity: to, offset: 0.001, easing: 'step-end' },
+      { opacity: to, offset: 0.999, easing: 'step-end' },
+      { opacity: from, offset: 1 },
+    ];
+    perch.animate(swap(1, 0), { duration: flying });
+    owl.animate(swap(0, 1), { duration: flying });
+    // The wings: four frames a beat, held each for an equal step.
     owl.animate(
+      BEATS.map((f, i) => ({ backgroundPosition: at(f), offset: i / BEATS.length, easing: 'step-end' })).concat({ backgroundPosition: at(REST), offset: 1, easing: 'step-end' }),
+      { duration: flying },
+    );
+    // Up off the perch and a little forward while it beats, then a glide back down.
+    fly.animate(
       [
-        { transform: 'translateY(0) rotate(0)', offset: 0 },
-        { transform: 'translateY(-4px) rotate(-8deg)', offset: 0.25 },
-        { transform: 'translateY(-4px) rotate(8deg)', offset: 0.55 },
-        { transform: 'translateY(0) rotate(0)', offset: 0.8 },
-        { transform: 'translateY(0) rotate(0)', offset: 1 },
+        { transform: 'translate(0, 0)', offset: 0 },
+        { transform: 'translate(3px, -7px)', offset: 0.45 },
+        { transform: 'translate(2px, -6px)', offset: 0.7 },
+        { transform: 'translate(0, 0)', offset: 1 },
       ],
       { duration: PLAY_MS, easing: 'ease-in-out' },
     );
@@ -53,7 +77,10 @@ export function ChartMark(props: { x: number; y: number; paused: boolean }) {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={() => setOverlay({ kind: 'referrals' })}
     >
-      <img ref={owl} src="/logo.svg" width="34" height="34" alt="" draggable={false} />
+      <span ref={fly} class="fly">
+        <img ref={perch} class="perch" src="/mark.svg" alt="" draggable={false} />
+        <span ref={owl} class="owl" style={{ 'background-position': at(REST) }} />
+      </span>
     </button>
   );
 }

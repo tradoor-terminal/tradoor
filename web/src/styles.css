@@ -1104,12 +1104,16 @@ table.venues tr.off td { color: var(--dim); }
 .alerts-btn .al-badge { position: absolute; top: 1px; right: -2px; margin: 0; }
 /* The tradoor owl over a live chart (components/ChartMark): it plays now and then, and opens the rewards. */
 .chart-mark { position: absolute; z-index: 5; display: block; width: 34px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer; }
-.chart-mark img { display: block; width: 100%; height: 100%; transition: filter 0.15s; }
-.chart-mark:hover img { filter: brightness(1.3) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent)); }
-/* A phone's chart is small: the mark too, kept on the same corner — the engine places it for 34px,
-   so the 12px it lost go on top, and its foot stays 12px above the axis. */
+/* Perched, the logo across the box; in flight, one frame of the sprite (four side by side) in its
+   place, its face on the logo's face; the raised wings and the downstroke reach past the box. */
+.chart-mark .fly { position: absolute; inset: 0; pointer-events: none; transition: filter 0.15s; }
+.chart-mark .perch { position: absolute; left: 0; top: 10.7%; width: 100%; height: auto; }
+.chart-mark .owl { position: absolute; left: -10.9%; top: -41.2%; width: 121.2%; height: 159.7%; background: url(/owl-fly.svg) 0 0 / 400% 100% no-repeat; opacity: 0; }
+.chart-mark:hover .fly { filter: brightness(1.3) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent)); }
+/* A phone's chart is small: the owl a little smaller too, kept on the same corner — the engine
+   places it for 34px, so the 4px it lost go on top, and its foot stays 12px above the axis. */
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
-  .chart-mark { width: 22px; height: 22px; transform: translateY(12px); }
+  .chart-mark { width: 30px; height: 30px; transform: translateY(4px); }
 }
 .alert-add { position: absolute; z-index: 6; display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: var(--text); background: var(--surface-3); border: 1px solid var(--border); }
 .alert-add:hover { color: #fff; background: #22ab94; border-color: #22ab94; }
