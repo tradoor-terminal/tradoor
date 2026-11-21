@@ -1,10 +1,11 @@
 <p align="center">
   <a href="https://tradoorterminal.com/">
-    <img src="web/public/logo.svg" width="112" height="112" alt="tradoor: a lime door ajar on a dark tile">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="web/public/logo-full-dark.svg">
+      <img src="web/public/logo-full.svg" width="220" alt="Tradoor Terminal">
+    </picture>
   </a>
 </p>
-
-<h1 align="center">tradoor terminal</h1>
 
 <p align="center">
   <b>A trading terminal in the browser, built for speed.</b><br>
@@ -21,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="https://tradoorterminal.com/"><img alt="Open tradoor terminal" src="https://img.shields.io/badge/Open%20tradoor-tradoorterminal.com-aafd35?style=for-the-badge&labelColor=070907" height="36"></a>
+  <a href="https://tradoorterminal.com/"><img alt="Open Tradoor Terminal" src="https://img.shields.io/badge/Open%20tradoor-tradoorterminal.com-aafd35?style=for-the-badge&labelColor=070907" height="36"></a>
   <a href="https://discord.gg/c6hhmvXe"><img alt="Join the tradoor Discord" src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?style=for-the-badge&logo=discord&logoColor=white&labelColor=070907" height="36"></a>
 </p>
 

@@ -77,7 +77,11 @@ kbd { border: 1px solid var(--border); background: var(--surface-2); padding: 0 
 /* ------------------------------------------------------------ shell */
 .shell { display: grid; grid-template-rows: 28px minmax(0, 1fr) 22px; height: 100%; }
 .topbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--surface); min-width: 0; }
-.brand { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--primary); color: var(--bg); font-weight: 700; font-size: .59375rem; letter-spacing: 0.14em; }
+.brand { display: flex; align-items: center; gap: 6px; padding: 0 9px 0 6px; color: var(--text); font-weight: 700; font-size: .59375rem; letter-spacing: 0.14em; }
+/* The name in two lines, TERMINAL spread to the width of TRADOOR above it. */
+.brand-name { display: grid; gap: 3.5px; line-height: 1; }
+.brand-name b { font-weight: 700; font-size: .78125rem; letter-spacing: 0.12em; margin-right: -0.12em; }
+.brand-name i { display: flex; justify-content: space-between; font-style: normal; font-weight: 600; font-size: .5rem; letter-spacing: 0; opacity: 0.75; }
 .topbar .item { display: flex; align-items: center; gap: 6px; padding: 0 9px; border-left: 1px solid var(--border); font-size: .6875rem; color: var(--muted); white-space: nowrap; }
 .topbar button.item:hover { color: var(--primary); background: var(--surface-2); }
 .topbar button.item.on { color: var(--bg); background: var(--primary); }
@@ -153,7 +157,7 @@ kbd { border: 1px solid var(--border); background: var(--surface-2); padding: 0 
    whole line box: digits and capitals carry no descender, so a line box leaves
    the space under them empty and the text reads a pixel or two high — plain to
    see beside a chip's border. A browser without `text-box` keeps today's look. */
-.brand span, .topbar .item span, .topbar .item kbd, .statusbar span, .tab span, .live .num, .live .state { text-box: trim-both cap alphabetic; }
+.brand b, .brand i span, .topbar .item span, .topbar .item kbd, .statusbar span, .tab span, .live .num, .live .state { text-box: trim-both cap alphabetic; }
 /* So does a label beside the icon it is centred with, and a chip's text in its border. */
 button:has(> svg) > span, .venue-name, .sig-score .div { text-box: trim-both cap alphabetic; }
 .banner { padding: 3px 8px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--bear) 12%, transparent); color: var(--bear); font-size: .6875rem; }
@@ -1098,15 +1102,14 @@ table.venues tr.off td { color: var(--dim); }
 .al-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 15px; height: 15px; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: var(--bear); color: #fff; font-size: .5625rem; font-weight: 700; line-height: 1; }
 .alerts-btn { position: relative; }
 .alerts-btn .al-badge { position: absolute; top: 1px; right: -2px; margin: 0; }
-/* The tradoor mark over a live chart (components/ChartMark): it plays now and then, and opens the rewards. */
+/* The tradoor owl over a live chart (components/ChartMark): it plays now and then, and opens the rewards. */
 .chart-mark { position: absolute; z-index: 5; display: block; width: 34px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer; }
-.chart-mark svg { display: block; overflow: visible; transition: filter 0.15s; }
-.chart-mark:hover svg { filter: brightness(1.3) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent)); }
+.chart-mark img { display: block; width: 100%; height: 100%; transition: filter 0.15s; }
+.chart-mark:hover img { filter: brightness(1.3) drop-shadow(0 0 4px color-mix(in oklab, var(--primary) 45%, transparent)); }
 /* A phone's chart is small: the mark too, kept on the same corner — the engine places it for 34px,
    so the 12px it lost go on top, and its foot stays 12px above the axis. */
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .chart-mark { width: 22px; height: 22px; transform: translateY(12px); }
-  .chart-mark svg { width: 22px; height: 22px; }
 }
 .alert-add { position: absolute; z-index: 6; display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; color: var(--text); background: var(--surface-3); border: 1px solid var(--border); }
 .alert-add:hover { color: #fff; background: #22ab94; border-color: #22ab94; }

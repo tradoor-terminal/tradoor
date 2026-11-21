@@ -1330,6 +1330,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
       change: l?.change ?? '',
       up: l?.up !== false,
       time: `${at === null ? '' : 'Replay · '}${formatAlertTime(at ?? Date.now())} ${zoneLabel(timeZone())}`,
+      mark: l?.mark ? { x: l.mark.x, y: l.mark.y } : undefined,
     };
     captureChart(sid, `tradoor ${symbolOf(market())} ${tfLabel(timeframe())} ${formatFileTime(Date.now())}.png`, title, save);
   };
@@ -2080,7 +2081,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
           <Show when={editing() === null && selectedDrawing()}>
             {(d) => <DrawingToolbar drawing={d()} onRestyle={(patch) => restyle(d(), patch)} onSettings={() => setEditing(d().id)} onDelete={() => void deleteDrawing(d().id)} />}
           </Show>
-          <Show when={legend()?.mark}>{(m) => <ChartMark x={m().x} y={m().y} accent={m().accent} bear={m().bear} paused={paused()} />}</Show>
+          <Show when={legend()?.mark}>{(m) => <ChartMark x={m().x} y={m().y} paused={paused()} />}</Show>
           <Show when={clock()}>
             {(c) => (
               <button

@@ -37,6 +37,8 @@ export interface CaptureTitle {
   up: boolean;
   /** When the picture was taken, or the replay's time. */
   time: string;
+  /** Where the owl goes, as the live chart has it (CSS pixels); none where the pane is too small. */
+  mark?: { x: number; y: number };
 }
 
 /**
@@ -44,7 +46,7 @@ export interface CaptureTitle {
  * that refuses the clipboard. `name` is what the file is called.
  */
 export function captureChart(slot: string, name: string, title: CaptureTitle, save = false): void {
-  const picture = Promise.all([call('capture', { id: slot, wide: CAPTURE_WIDE }), import('./capture-title')]).then(([shot, { titled }]) => titled(shot, title));
+  const picture = Promise.all([call('capture', { id: slot, wide: CAPTURE_WIDE, mark: false }), import('./capture-title')]).then(([shot, { titled }]) => titled(shot, title));
   const failed = (e: unknown) => toast({ tone: 'warn', title: 'Picture not taken', body: errorText(e) });
   if (save || !canWrite()) {
     picture.then((blob) => keep(blob, name), failed);

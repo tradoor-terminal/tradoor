@@ -17,7 +17,15 @@ function themed(name: string, fallback: string): string {
   return color || fallback;
 }
 
-export function titled({ picture, px }: { picture: ImageBitmap; px: number }, title: CaptureTitle): Promise<Blob> {
+/** The owl, as the live chart shows it; none if it will not load. */
+async function owl(): Promise<HTMLImageElement | null> {
+  const img = new Image();
+  img.src = '/mark.svg';
+  return img.decode().then(() => img, () => null);
+}
+
+export async function titled({ picture, px }: { picture: ImageBitmap; px: number }, title: CaptureTitle): Promise<Blob> {
+  const mark = title.mark ? await owl() : null;
   const canvas = document.createElement('canvas');
   canvas.width = picture.width;
   canvas.height = picture.height;
@@ -80,5 +88,56 @@ export function titled({ picture, px }: { picture: ImageBitmap; px: number }, ti
     }
     top += heights[i]!;
   });
+  // The owl, where the live chart has it (the engine leaves it out of the picture), and the name beside it.
+  ctx.globalAlpha = 1;
+  if (mark && title.mark) signed(ctx, mark, title.mark.x, title.mark.y, family, text);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('the picture was not made'))), 'image/png'));
+}
+
+/** The name's sizes in a picture, in CSS pixels. */
+const [BIG, SMALL] = [11.5, 7.5];
+
+/**
+ * The owl in the 34px box the live chart gives it, and TRADOOR TERMINAL to its
+ * right as the top bar writes it: the name bold, TERMINAL spread under it to
+ * the same width, the two centred on the owl.
+ */
+function signed(ctx: CanvasRenderingContext2D, owl: HTMLImageElement, x: number, y: number, family: string, color: string): void {
+  const [w, h] = [34, 34 * (1820 / 2320)];
+  const middle = y + 17;
+  ctx.drawImage(owl, x, middle - h / 2, w, h);
+  const left = x + w + 6;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = color;
+  // TRADOOR, its letters spaced as the bar's are (0.12em), the last one's space not counted.
+  // The two lines together stand as tall as the owl's head and wings.
+  ctx.font = `700 ${BIG}px ${family}`;
+  const big = [...'TRADOOR'];
+  const track = BIG * 0.12;
+  const widths = big.map((c) => ctx.measureText(c).width);
+  const wide = widths.reduce((a, b) => a + b, 0) + track * (big.length - 1);
+  const cap = ctx.measureText('T').actualBoundingBoxAscent;
+  ctx.font = `600 ${SMALL}px ${family}`;
+  const small = [...'TERMINAL'];
+  const smallCap = ctx.measureText('T').actualBoundingBoxAscent;
+  const gap = 3;
+  const top = middle - (cap + gap + smallCap) / 2;
+  ctx.font = `700 ${BIG}px ${family}`;
+  let at = left;
+  big.forEach((c, i) => {
+    ctx.fillText(c, at, top + cap);
+    at += widths[i]! + track;
+  });
+  // TERMINAL: first letter at the left edge, last at the right, the rest spread evenly between.
+  ctx.font = `600 ${SMALL}px ${family}`;
+  ctx.globalAlpha = 0.75;
+  const sw = small.map((c) => ctx.measureText(c).width);
+  const space = (wide - sw.reduce((a, b) => a + b, 0)) / (small.length - 1);
+  at = left;
+  small.forEach((c, i) => {
+    ctx.fillText(c, at, top + cap + gap + smallCap);
+    at += sw[i]! + space;
+  });
+  ctx.globalAlpha = 1;
 }
