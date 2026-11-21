@@ -1,7 +1,7 @@
 /**
  * The tradoor owl over a live chart, bottom left of its price pane, where the
  * engine leaves it to the page (`set_page_mark`). It perches as the logo
- * (mark.svg), and every ten seconds takes off: the flight sprite takes its
+ * (mark.svg), and now and then, 10 to 60 seconds apart at random, takes off: the flight sprite takes its
  * place for three wingbeats through the four frames of public/owl-fly.svg (one
  * picture, its frames side by side, set on the logo's face), a lift and a glide
  * back down, and the logo again, with nothing running between. A click opens the
@@ -12,7 +12,8 @@ import { onCleanup, onMount } from 'solid-js';
 import { setOverlay } from '../app/ui';
 import { tl } from '../lib/i18n';
 
-const EVERY_MS = 10_000;
+/** How long it perches between flights: somewhere in this span, drawn afresh each time. */
+const [SOONEST_MS, LATEST_MS] = [10_000, 60_000];
 const PLAY_MS = 1_500;
 /** The frame it lands on, wings level, before the logo is back. */
 const REST = 1;
@@ -21,7 +22,14 @@ const BEATS = [2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1];
 const at = (frame: number) => `${(frame * 100) / 3}% 0`;
 /** Every mark on the page plays at once, from one clock. */
 const marks = new Set<() => void>();
-let clock: ReturnType<typeof setInterval> | undefined;
+let clock: ReturnType<typeof setTimeout> | undefined;
+/** The next flight for every mark, at a time drawn anew after each. */
+const next = () => {
+  clock = setTimeout(() => {
+    marks.forEach((p) => p());
+    next();
+  }, SOONEST_MS + Math.random() * (LATEST_MS - SOONEST_MS));
+};
 const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function ChartMark(props: { x: number; y: number; paused: boolean }) {
@@ -59,11 +67,11 @@ export function ChartMark(props: { x: number; y: number; paused: boolean }) {
   };
   onMount(() => {
     marks.add(play);
-    clock ??= setInterval(() => marks.forEach((p) => p()), EVERY_MS);
+    if (clock === undefined) next();
     onCleanup(() => {
       marks.delete(play);
       if (marks.size === 0) {
-        clearInterval(clock);
+        clearTimeout(clock);
         clock = undefined;
       }
     });
