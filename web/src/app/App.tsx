@@ -406,7 +406,7 @@ function StatusBar() {
         <span class="num">{online() || '·'}</span>
         <span class="lbl">{tl('online')}</span>
       </button>
-      <a class="dc" href="https://discord.gg/c6hhmvXe" target="_blank" rel="noopener" data-tip="tradoor on Discord — come and talk" aria-label={tl('tradoor on Discord')} />
+      <a class="dc" href="https://discord.gg/zCaWsFpXq4" target="_blank" rel="noopener" data-tip="tradoor on Discord — come and talk" aria-label={tl('tradoor on Discord')} />
       <a class="gh" href="https://github.com/tradoor-terminal/tradoor" target="_blank" rel="noopener" data-tip="tradoor on GitHub — open source, AGPL-3.0" aria-label={tl('tradoor on GitHub')} />
       <Show when={messengerOpen()}>
         <Messenger onClose={() => setMessengerOpen(false)} />
