@@ -10,6 +10,7 @@
 //! `None` marks warm-up; one `None` inside a window makes that bar `None` too.
 
 pub mod cross;
+pub mod flow;
 pub mod momentum;
 pub mod moon;
 pub mod pivots;
@@ -21,6 +22,7 @@ pub mod volatility;
 pub type Series = Vec<Option<f64>>;
 
 pub use cross::{cross_over, cross_under};
+pub use flow::bar_delta;
 pub use momentum::{macd, rsi, stoch_rsi, Macd, StochRsi};
 pub use pivots::{pivot_highs, pivot_lows, Pivot};
 pub use series::{change, combine, ema, exp_smooth, highest, lowest, rma, sma, stdev};

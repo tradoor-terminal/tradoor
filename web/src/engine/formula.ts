@@ -31,6 +31,20 @@ export interface FormulaBars {
   low: Float64Array;
   close: Float64Array;
   volume: Float64Array;
+  /** What market buyers took; -1, or no column at all, where the exchange does not say. */
+  buy?: Float64Array;
+}
+
+/** The columns `fx_run` and `fx_backtest` read, one after another: crates/frost-script-wasm. */
+const COLUMNS = 7;
+
+/** The bars into the module's memory at `ptr`, column by column. */
+function writeBars(x: Exports, ptr: number, bars: FormulaBars, n: number): void {
+  const cols = new Float64Array(x.memory.buffer, ptr, n * COLUMNS);
+  [bars.time, bars.open, bars.high, bars.low, bars.close, bars.volume].forEach((c, k) => cols.set(c.subarray(0, n), k * n));
+  const buy = cols.subarray(6 * n, 7 * n);
+  buy.fill(-1);
+  if (bars.buy) buy.set(bars.buy.subarray(0, n));
 }
 
 let module: Exports | null = null;
@@ -81,18 +95,17 @@ export function runFormula(x: Exports, src: string, inputs: readonly number[], b
   const n = bars.time.length;
   const result = using(x, src, (sp, sl) => {
     const ip = x.fx_alloc(inputs.length * 8);
-    const bp = x.fx_alloc(n * 6 * 8);
+    const bp = x.fx_alloc(n * COLUMNS * 8);
     try {
       new Float64Array(x.memory.buffer, ip, inputs.length).set(inputs);
-      const cols = new Float64Array(x.memory.buffer, bp, n * 6);
-      [bars.time, bars.open, bars.high, bars.low, bars.close, bars.volume].forEach((c, k) => cols.set(c.subarray(0, n), k * n));
+      writeBars(x, bp, bars, n);
       const ok = x.fx_run(sp, sl, ip, inputs.length, bp, n, Math.max(0, Math.min(12, Math.round(decimals)))) === 1;
       const meta = text(x);
       // Copied out: the module's memory is written again by the next.
       return ok ? { meta, values: new Float64Array(x.memory.buffer, x.fx_values_ptr(), x.fx_values_len()).slice() } : { error: meta };
     } finally {
       x.fx_free(ip, inputs.length * 8);
-      x.fx_free(bp, n * 6 * 8);
+      x.fx_free(bp, n * COLUMNS * 8);
     }
   });
   if ('message' in result) return { error: `error\t${result.line}\t${result.col}\t${result.message}` };
@@ -117,12 +130,11 @@ export function runBacktest(x: Exports, src: string, inputs: readonly number[], 
   const ni = inner?.time.length ?? 0;
   const nf = funding?.time.length ?? 0;
   const result = using(x, src, (sp, sl) => {
-    const sizes = [inputs.length * 8, n * 6 * 8, settings.length * 8, ni * 5 * 8, nf * 2 * 8];
+    const sizes = [inputs.length * 8, n * COLUMNS * 8, settings.length * 8, ni * 5 * 8, nf * 2 * 8];
     const [ip, bp, stp, inp, fp] = sizes.map((b) => x.fx_alloc(b)) as [number, number, number, number, number];
     try {
       new Float64Array(x.memory.buffer, ip, inputs.length).set(inputs);
-      const cols = new Float64Array(x.memory.buffer, bp, n * 6);
-      [bars.time, bars.open, bars.high, bars.low, bars.close, bars.volume].forEach((c, k) => cols.set(c.subarray(0, n), k * n));
+      writeBars(x, bp, bars, n);
       new Float64Array(x.memory.buffer, stp, settings.length).set(settings);
       if (inner && ni > 0) {
         const lower = new Float64Array(x.memory.buffer, inp, ni * 5);

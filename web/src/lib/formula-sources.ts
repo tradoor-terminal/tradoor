@@ -6,6 +6,7 @@
 import atr from '../../../crates/frost-script/sources/atr.frost?raw';
 import avwap from '../../../crates/frost-script/sources/avwap.frost?raw';
 import bb from '../../../crates/frost-script/sources/bb.frost?raw';
+import cvd from '../../../crates/frost-script/sources/cvd.frost?raw';
 import ema from '../../../crates/frost-script/sources/ema.frost?raw';
 import ema200 from '../../../crates/frost-script/sources/ema200.frost?raw';
 import ichimoku from '../../../crates/frost-script/sources/ichimoku.frost?raw';
@@ -21,6 +22,7 @@ import stochrsi from '../../../crates/frost-script/sources/stochrsi.frost?raw';
 import supertrend from '../../../crates/frost-script/sources/supertrend.frost?raw';
 import swingmap from '../../../crates/frost-script/sources/swingmap.frost?raw';
 import volume from '../../../crates/frost-script/sources/volume.frost?raw';
+import volumedelta from '../../../crates/frost-script/sources/volumedelta.frost?raw';
 import vwap from '../../../crates/frost-script/sources/vwap.frost?raw';
 
 /** The built-in indicators' workings, by study kind or layer, as scripts: what their Source tab shows. */
@@ -37,6 +39,8 @@ export const SOURCES: Record<string, { name: string; source: string }> = {
   stochrsi: { name: 'Stochastic RSI', source: stochrsi },
   macd: { name: 'MACD', source: macd },
   atr: { name: 'Average True Range', source: atr },
+  volumedelta: { name: 'Volume Delta', source: volumedelta },
+  cvd: { name: 'Cumulative Volume Delta', source: cvd },
   vwap: { name: 'VWAP', source: vwap },
   avwap: { name: 'Anchored VWAP', source: avwap },
   keylevels: { name: 'Historical Key Levels', source: keylevels },
@@ -48,7 +52,6 @@ export const SOURCES: Record<string, { name: string; source: string }> = {
 /** The built-ins a script cannot be written for, and why: each reads what a script is not given. */
 export const UNWRITTEN: Record<string, string> = {
   liquidations: 'It reads the liquidations the exchanges report as they happen. A script is given the chart’s candles alone.',
-  volumedelta: 'It reads what market buyers took in each bar, which the exchange gives the chart beside its candles. A script is given the candles alone.',
   vpvr: 'It reads the bars on screen, which change as you scroll and zoom. A script works out each bar from the bars before it.',
   vwaplevels: 'It reads hourly and daily bars the chart loads beside its own, back to the start of last year, so a minute chart has the year’s levels. A script is given the chart’s own bars alone.',
   oi: 'It reads open interest from the exchanges, beside the candles. A script is given the candles alone.',

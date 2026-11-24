@@ -73,13 +73,15 @@ fn source(name: &str) -> &'static str {
         "avwap" => include_str!("../sources/avwap.frost"),
         "moon" => include_str!("../sources/moon.frost"),
         "sessions" => include_str!("../sources/sessions.frost"),
+        "cvd" => include_str!("../sources/cvd.frost"),
+        "volumedelta" => include_str!("../sources/volumedelta.frost"),
         _ => panic!("no source {name}"),
     }
 }
 
 fn run_source(name: &str, inputs: &[f64], c: &[Candle]) -> Output {
     let k = columns(c);
-    let bars = Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume };
+    let bars = Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[] };
     run(source(name), inputs, &bars, 2).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
@@ -317,7 +319,7 @@ fn a_description_lists_the_settings_and_lines() {
 fn check(src: &str) -> Result<Output, Error> {
     let c = candles();
     let k = columns(&c[..300]);
-    run(src, &[], &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume }, 2)
+    run(src, &[], &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[] }, 2)
 }
 
 fn fails(src: &str, line: u32, says: &str) {
@@ -461,4 +463,52 @@ fn a_function_that_remembers_hears_every_bar_even_on_the_side_not_taken() {
     let out = check("e = bar % 2 == 0 ? ema(close, 10) : 0\nplot(e, \"E\")").unwrap();
     let want = indicators::ema(&closes(&candles()[..300]), 10);
     assert_eq!(line(&out, "E")[20], want[20].unwrap());
+}
+
+fn run_with_buyers(src: &str, inputs: &[f64], c: &[Candle]) -> Output {
+    let k = columns(c);
+    let buy: Vec<f64> = c.iter().map(|c| c.taker_buy.unwrap_or(-1.0)).collect();
+    run(src, inputs, &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &buy }, 2).unwrap_or_else(|e| panic!("{e}"))
+}
+
+#[test]
+fn delta_and_cvd_read_the_buyers_and_match_the_cvd_study() {
+    // Every third bar with no buyers reported, as a market that leaves some out: those are estimated.
+    let c: Vec<Candle> = candles().into_iter().enumerate().map(|(i, c)| Candle { taker_buy: (i % 3 != 0).then_some(c.volume * (0.3 + (i % 5) as f64 * 0.1)), ..c }).collect();
+    for (reset, choice) in [(0, 0.0), (1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0), (5, 5.0)] {
+        let out = run_with_buyers(source("cvd"), &[choice], &c);
+        let study = compute_study(&parse_studies(&format!("cvd:{reset}"), 12)[0], &c);
+        let want = &study.lines.iter().find(|l| l.key == "cvd").unwrap().values;
+        same(&format!("cvd reset {reset}"), line(&out, "CVD"), want, false);
+    }
+    let smoothed = run_with_buyers(source("cvd"), &[0.0, 1.0, 9.0], &c);
+    let study = compute_study(&parse_studies("cvd:0:0:9", 12)[0], &c);
+    same("cvd ema", line(&smoothed, "EMA"), &study.lines.iter().find(|l| l.key == "ema").unwrap().values, false);
+    assert!(line(&run_with_buyers(source("cvd"), &[], &c), "EMA").iter().all(|v| v.is_nan()), "no average unless asked");
+
+    let out = run_with_buyers(source("volumedelta"), &[], &c);
+    let study = compute_study(&parse_studies("volumedelta", 12)[0], &c);
+    same("volume delta", line(&out, "Delta"), &study.lines[0].values, false);
+
+    // With no buyers column at all, every bar is estimated, as the study does without them.
+    let bare: Vec<Candle> = c.iter().map(|c| Candle { taker_buy: None, ..*c }).collect();
+    let out = run_source("cvd", &[], &bare);
+    let study = compute_study(&parse_studies("cvd", 12)[0], &bare);
+    same("cvd estimated", line(&out, "CVD"), &study.lines.iter().find(|l| l.key == "cvd").unwrap().values, false);
+}
+
+#[test]
+fn cvd_starts_again_where_its_condition_holds_and_delta_is_still_a_name() {
+    let t0 = 1_700_000_000_000.0;
+    let time: Vec<f64> = (0..4).map(|i| t0 + f64::from(i) * 3_600_000.0).collect();
+    let (open, high, low, close, volume) = (vec![100.0; 4], vec![110.0; 4], vec![90.0; 4], vec![100.0; 4], vec![10.0; 4]);
+    let buy = [7.0, 2.0, 8.0, -1.0];
+    let bars = Bars { time: &time, open: &open, high: &high, low: &low, close: &close, volume: &volume, buy: &buy };
+    let src = "pane own\ndelta = 1\nplot(delta(), \"D\")\nplot(cvd(), \"All\")\nplot(cvd(bar == 2), \"Again\")\nplot(delta, \"Name\")";
+    let out = run(src, &[], &bars, 2).unwrap();
+    assert_eq!(line(&out, "D"), [4.0, -6.0, 6.0, 0.0], "the last bar's close is mid-range: no buyers reported, none estimated");
+    assert_eq!(line(&out, "All"), [4.0, -2.0, 4.0, 4.0]);
+    assert_eq!(line(&out, "Again"), [4.0, -2.0, 6.0, 6.0]);
+    assert_eq!(line(&out, "Name"), [1.0; 4], "a variable may still be called delta");
+    fails("if close > 0 {\n  x = cvd()\n}", 2, "outside if");
 }

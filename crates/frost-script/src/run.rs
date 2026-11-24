@@ -213,12 +213,16 @@ enum State {
     ValueWhen(f64),
     Changed(Option<f64>),
     Cum(f64),
+    Delta,
+    Cvd(f64),
 }
 
 /// What a remembering function reads besides what it is given.
 struct Ctx {
     tr: f64,
     volume: f64,
+    /// What market buyers took less what sellers did, exact or estimated: `tradoor_core::indicators::bar_delta`.
+    delta: f64,
 }
 
 impl State {
@@ -262,6 +266,8 @@ impl State {
             Keep::ValueWhen => State::ValueWhen(NA),
             Keep::Changed => State::Changed(None),
             Keep::Cum => State::Cum(0.0),
+            Keep::Delta => State::Delta,
+            Keep::Cvd => State::Cvd(0.0),
         }
     }
 
@@ -436,6 +442,17 @@ impl State {
             State::Cum(total) => {
                 if !a.is_nan() {
                     *total += a;
+                }
+                (*total, 1)
+            }
+            State::Delta => (ctx.delta, 1),
+            // Started again from 0 on a bar its condition holds on, that bar's delta its first.
+            State::Cvd(total) => {
+                if truth(a) {
+                    *total = 0.0;
+                }
+                if !ctx.delta.is_nan() {
+                    *total += ctx.delta;
                 }
                 (*total, 1)
             }
@@ -854,6 +871,14 @@ impl Machine<'_> {
         Ok(Flow::Next)
     }
 
+    /// Bar `i`'s delta: from its buyers where the exchange says, else from where it closed in its range.
+    fn delta(&self, i: usize) -> f64 {
+        let b = self.bars;
+        let at = |xs: &[f64]| xs.get(i).copied().unwrap_or(NA);
+        let buy = Some(at(b.buy)).filter(|v| *v >= 0.0);
+        tradoor_core::indicators::bar_delta(at(b.volume), buy, at(b.high), at(b.low), at(b.close)).0
+    }
+
     fn series(&self, s: Series, i: usize) -> f64 {
         let b = self.bars;
         let at = |xs: &[f64]| xs.get(i).copied().unwrap_or(NA);
@@ -948,7 +973,7 @@ impl Machine<'_> {
                 for (slot, a) in v.iter_mut().zip(args) {
                     *slot = self.ex(a)?;
                 }
-                let ctx = Ctx { tr: self.series(Series::Tr, self.i), volume: self.series(Series::Volume, self.i) };
+                let ctx = Ctx { tr: self.series(Series::Tr, self.i), volume: self.series(Series::Volume, self.i), delta: self.delta(self.i) };
                 let Some(state) = self.states.get_mut(*site) else { return Ok(NA) };
                 let (v, steps) = state.step(v, &ctx);
                 self.count(steps, None)?;

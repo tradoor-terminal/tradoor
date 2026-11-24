@@ -37,6 +37,7 @@ const STUDIES: Record<string, Described> = {
   swingmap: { name: 'Range Swing Structure Map', category: 'Levels and structure', keywords: 'pivot zigzag hh hl lh ll market structure', about: 'Zigzag of confirmed pivots tagged HH/HL/LH/LL, with each leg’s move and duration, and the averages across the window.' },
   flow: { name: 'Net Taker Flow Marks', category: 'Flow and positioning', keywords: 'delta orderflow buyers sellers', about: 'Minutes whose net taker flow ran hard one way, marked where they traded, the dot larger the harder it ran. What counts as hard is the size set per market in the Flow panel, and the server keeps two days of them.' },
   volumedelta: { name: 'Volume Delta', category: 'Flow and positioning', keywords: 'cvd cumulative taker buyers sellers orderflow', about: 'What market buyers took less what market sellers did, in coins, bar by bar or added up. Exact where the exchange reports its buyers, as Binance does. Any other bar is estimated from where it closed in its range, and the legend says how many are.' },
+  cvd: { name: 'Cumulative Volume Delta', category: 'Flow and positioning', keywords: 'cvd delta cumulative taker buyers sellers orderflow divergence', about: 'What market buyers took less what market sellers did, added up bar by bar in a pane of its own, as a line or as candles of each bar’s move. It can start again from zero each session, week, month, quarter or year, and carry an EMA of itself. Exact where the exchange reports its buyers, as Binance does; elsewhere, and on the forming bar until it closes, each bar is estimated from where it closed in its range, and the legend says which.' },
   oi: { name: 'Aggregated Open Interest', category: 'Flow and positioning', keywords: 'oi positioning derivatives perpetuals', about: 'Open interest summed across Binance, Bybit, OKX, Deribit and Hyperliquid perpetuals, stablecoin- and coin-margined. Recorded by the tradoor server.' },
   sessions: { name: 'Trading Sessions', category: 'Time and cycles', keywords: 'asia london new york ny killzone range', about: 'Each day’s Asia, London and New York sessions boxed from high to low, with London and New York following their summer time. Needs bars of an hour or less.' },
   moon: { name: 'Moon Phases', category: 'Time and cycles', keywords: 'full new lunar', about: 'A disc over the bar a full moon falls in, a ring under the bar a new moon does.' },
@@ -206,7 +207,7 @@ export function anotherId(def: StudyDefinition, active: readonly string[], start
   const first = def.params[0];
   if (!first || def.kind === 'oi' || def.kind === 'vpvr') return null;
   const rest = start.slice(1);
-  const values = def.kind === 'vwap' ? [1, 2, 3] : def.kind === 'volumedelta' ? [0, 1] : def.kind === 'ema' || def.kind === 'sma' ? ANOTHER_AVERAGE : [2, 3, 4, 5, 6, 7, 8].map((k) => first.default * k);
+  const values = def.kind === 'vwap' ? [1, 2, 3] : def.kind === 'volumedelta' ? [0, 1] : def.kind === 'cvd' ? [0, 1, 2, 3, 5, 4] : def.kind === 'ema' || def.kind === 'sma' ? ANOTHER_AVERAGE : [2, 3, 4, 5, 6, 7, 8].map((k) => first.default * k);
   for (const v of values) {
     const id = studyId(def, [v, ...rest]);
     if (v <= first.max && !active.includes(id)) return id;
@@ -217,7 +218,7 @@ export function anotherId(def: StudyDefinition, active: readonly string[], start
 /** What the picker writes for one on the chart: its parameters, or nothing where they would not say which. */
 export function instanceLabel(id: string): string {
   const [kind, ...params] = id.split(':');
-  return params.length === 0 || ['vwap', 'vwaplevels', 'oi', 'vpvr', 'volumedelta'].includes(kind!) ? 'On chart' : params.join(' ');
+  return params.length === 0 || ['vwap', 'vwaplevels', 'oi', 'vpvr', 'volumedelta', 'cvd'].includes(kind!) ? 'On chart' : params.join(' ');
 }
 
 // ---------------------------------------------------------------- inputs
@@ -253,6 +254,11 @@ const PARAMS: Record<string, Record<string, ParamUi>> = {
   ichimoku: { conversion: { label: 'Conversion length' }, base: { label: 'Base length' }, span: { label: 'Leading span B length' }, shift: { label: 'Displacement', hint: 'How far the spans run ahead and price runs behind, counted as TradingView counts it: 26 moves them 25 bars' } },
   vpvr: { rows: { label: 'Rows' }, va: { label: 'Value area, %' }, width: { label: 'Width, % of pane' }, side: { label: 'Side', options: ['Right', 'Left'] } },
   volumedelta: { view: { label: 'View', options: ['Each bar', 'Cumulative'] } },
+  cvd: {
+    reset: { label: 'Reset', options: ['None', 'Session', 'Week', 'Month', 'Year', 'Quarter'], order: [0, 1, 2, 3, 5, 4], hint: 'Where the sum starts again from zero, as the VWAP’s anchor does. A session is a UTC day' },
+    view: { label: 'Display', options: ['Line', 'Candles'], hint: 'A line through each bar’s sum, or a candle from the sum before the bar to the sum after it' },
+    smooth: { label: 'EMA length', hint: 'An exponential average of the CVD drawn over it; 0 draws none' },
+  },
   stochrsi: { rsi: { label: 'RSI length' }, stoch: { label: 'Stochastic length' }, k: { label: '%K smoothing' }, d: { label: '%D smoothing' } },
   macd: { fast: { label: 'Fast length' }, slow: { label: 'Slow length' }, signal: { label: 'Signal length' } },
   swingmap: { left: { label: 'Left bars', hint: 'Bars a pivot must stand above on its left' }, right: { label: 'Right bars', hint: 'Bars to its right before it is confirmed' } },
@@ -315,6 +321,7 @@ const LABELS: Record<string, Record<string, string>> = {
   vwap: { upper1: 'Value Area High', lower1: 'Value Area Low', prevVwap: 'Previous VWAP', prevVah: 'Previous VAH', prevVal: 'Previous VAL', upper2: 'Upper band 2', lower2: 'Lower band 2', upper3: 'Upper band 3', lower3: 'Lower band 3' },
   swingmap: { zigzag: 'Zigzag' },
   volumedelta: { histogram: 'Delta, above zero', cvd: 'Cumulative delta' },
+  cvd: { cvd: 'CVD', ema: 'EMA of CVD' },
   ichimoku: { conversion: 'Conversion line', base: 'Base line', lagging: 'Lagging span', leadA: 'Leading span A', leadB: 'Leading span B' },
 };
 
@@ -359,6 +366,11 @@ export function studyPlots(id: string, lines: readonly StudyLine[]): StylePlot[]
   if (kind === 'vpvr') out.push({ key: 'up', label: 'Bars that closed up', theme: 'bull', noWidth: true }, { key: 'down', label: 'Bars that closed down', theme: 'bear', noWidth: true }, { key: 'poc', label: 'Point of control', theme: 'tpoPoc', width: 1, noPattern: true }, { key: 'va', label: 'Value area edges', theme: 'text', width: 1, noPattern: true });
   if (kind === 'swingmap') out.push({ key: 'labels', label: 'Swing labels', onlyToggle: true }, { key: 'stats', label: 'Averages in the legend', onlyToggle: true });
   if (kind === 'flow') out.push({ key: 'bought', label: 'Bought', theme: 'bull', noWidth: true }, { key: 'sold', label: 'Sold', theme: 'bear', noWidth: true });
+  if (kind === 'cvd') {
+    // As candles, the candles are drawn: the CVD line only carries their closes, unstroked.
+    if (id.split(':')[2] === '1') out.push({ key: 'up', label: 'Rising', theme: 'bull', noToggle: true, noWidth: true }, { key: 'down', label: 'Falling', theme: 'bear', noToggle: true, noWidth: true });
+    out.push({ key: 'zero', label: 'Zero line', theme: 'text', alpha: '66', width: 1, pattern: '1' });
+  }
   if (kind === 'oi' && id.split(':')[3] !== '1') out.push({ key: 'up', label: 'Rising', theme: 'bull', noToggle: true, noWidth: true }, { key: 'down', label: 'Falling', theme: 'bear', noToggle: true, noWidth: true });
   if (kind === 'rsi' || kind === 'stochrsi') out.push(GUIDES_PLOT);
   return out;

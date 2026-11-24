@@ -117,7 +117,8 @@ function withBar(k: FormulaBars, b: Bar): FormulaBars {
     out[c.length] = v;
     return out;
   };
-  return { time: add(k.time, b.time), open: add(k.open, b.open), high: add(k.high, b.high), low: add(k.low, b.low), close: add(k.close, b.close), volume: add(k.volume, b.volume) };
+  // The forming bar's buyers come only as it closes: estimated until then.
+  return { time: add(k.time, b.time), open: add(k.open, b.open), high: add(k.high, b.high), low: add(k.low, b.low), close: add(k.close, b.close), volume: add(k.volume, b.volume), buy: add(k.buy ?? new Float64Array(k.time.length).fill(-1), -1) };
 }
 /** An alert line's style as the engine reads it: see `set_alerts`. */
 const DASHES: Record<string, number> = { solid: 1, dashed: 2, dotted: 3 };
@@ -1258,7 +1259,7 @@ async function hold(market: string, timeframe: string, bars: number): Promise<{ 
 
 const lastBars = (c: Cols, n: number): Cols => sliceCols(c, Math.max(0, c.time.length - n));
 /** Bars to hand the page: copies, whose buffers can be given away. */
-const copyBars = (k: FormulaBars) => ({ time: k.time.slice(), open: k.open.slice(), high: k.high.slice(), low: k.low.slice(), close: k.close.slice(), volume: k.volume.slice() });
+const copyBars = (k: FormulaBars) => ({ time: k.time.slice(), open: k.open.slice(), high: k.high.slice(), low: k.low.slice(), close: k.close.slice(), volume: k.volume.slice(), ...(k.buy ? { buy: k.buy.slice() } : {}) });
 
 /** Source bars in one profile session. */
 const SESSION_BARS: Record<string, number> = { '1d': 24, '1w': 7, '1M': 31 };

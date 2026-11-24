@@ -182,17 +182,21 @@ fn drawing(out: &Output, n: usize) -> (String, Vec<f64>) {
     (t, values)
 }
 
-/// Run a script over `n` bars, laid out as six columns one after another:
-/// time, open, high, low, close, volume; `decimals` is how many a price of the
+/// The columns a bar is given in, one after another.
+const COLUMNS: usize = 7;
+
+/// Run a script over `n` bars, laid out as seven columns one after another:
+/// time, open, high, low, close, volume and what market buyers took (below 0
+/// where the exchange does not say); `decimals` is how many a price of the
 /// market is written with. 1 when it ran, 0 when it says why not.
 ///
 /// # Safety
 /// The pointers are the page's allocations, of the lengths given.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fx_run(src: *const u8, src_len: usize, inputs: *const f64, inputs_len: usize, bars: *const f64, n: usize, decimals: u32) -> u32 {
-    let (src, inputs, all) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(6))) };
+    let (src, inputs, all) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(COLUMNS))) };
     let column = |k: usize| all.get(k * n..(k + 1) * n).unwrap_or(&[]);
-    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5) };
+    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6) };
     let (text, values, ok) = match run(src, inputs, &bars, decimals.min(12) as u8) {
         Ok(out) => {
             let (t, values) = drawing(&out, n);
@@ -289,10 +293,10 @@ fn report(r: &Report) -> Vec<f64> {
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn fx_backtest(src: *const u8, src_len: usize, inputs: *const f64, inputs_len: usize, bars: *const f64, n: usize, decimals: u32, set: *const f64, set_len: usize, inner: *const f64, inner_n: usize, funding: *const f64, funding_n: usize) -> u32 {
-    let (src, inputs, all, set) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(6)), numbers(set, set_len)) };
+    let (src, inputs, all, set) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(COLUMNS)), numbers(set, set_len)) };
     let (low, rates) = unsafe { (numbers(inner, inner_n.saturating_mul(5)), numbers(funding, funding_n.saturating_mul(2))) };
     let column = |k: usize| all.get(k * n..(k + 1) * n).unwrap_or(&[]);
-    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5) };
+    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6) };
     let lower = |k: usize| low.get(k * inner_n..(k + 1) * inner_n).unwrap_or(&[]);
     let inner = Inner { time: lower(0), open: lower(1), high: lower(2), low: lower(3), close: lower(4) };
     let paid = |k: usize| rates.get(k * funding_n..(k + 1) * funding_n).unwrap_or(&[]);

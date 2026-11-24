@@ -400,7 +400,7 @@ impl DrawingStyle {
             "compact" => self.compact = flag(),
             "alwaysStats" => self.always_stats = flag(),
             "locked" => self.locked = flag(),
-            "pane" => self.pane = [Group::Pct, Group::Stoch, Group::Macd, Group::Atr, Group::Oi, Group::Delta, Group::Volume].into_iter().find(|g| g.as_str() == value),
+            "pane" => self.pane = [Group::Pct, Group::Stoch, Group::Macd, Group::Atr, Group::Oi, Group::Delta, Group::Cvd, Group::Volume].into_iter().find(|g| g.as_str() == value),
             _ => {}
         }
     }

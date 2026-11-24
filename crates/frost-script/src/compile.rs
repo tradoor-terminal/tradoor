@@ -182,6 +182,8 @@ pub enum Keep {
     ValueWhen,
     Changed,
     Cum,
+    Delta,
+    Cvd,
 }
 
 impl Keep {
@@ -198,7 +200,7 @@ impl Keep {
 }
 
 /// Name, the values it takes, and the lengths after them.
-const KEEPS: [(&str, usize, usize); 35] = [
+const KEEPS: [(&str, usize, usize); 37] = [
     ("sma", 1, 1),
     ("ema", 1, 1),
     ("rma", 1, 1),
@@ -234,6 +236,8 @@ const KEEPS: [(&str, usize, usize); 35] = [
     ("valuewhen", 2, 0),
     ("changed", 1, 0),
     ("cum", 1, 0),
+    ("delta", 0, 0),
+    ("cvd", 1, 0),
 ];
 
 /// The colours a script names, as `0xRRGGBBAA`: the first twelve are the chart's own palette.
@@ -1787,6 +1791,9 @@ impl<'a> Compiler<'a> {
             (vec![Ex::Bar(s)], args.iter().collect())
         } else if name == "change" && args.len() == 1 {
             (vec![self.num(&args[0], top)?], Vec::new())
+        } else if name == "cvd" && args.is_empty() {
+            // Never started again: NaN is no reason to.
+            (vec![Ex::Num(f64::NAN)], Vec::new())
         } else if args.len() == series + lengths {
             let values = args[..series].iter().map(|a| self.num(a, top)).collect::<Result<Vec<_>, _>>()?;
             (values, args[series..].iter().collect())
@@ -1849,6 +1856,8 @@ impl<'a> Compiler<'a> {
             "barssince" => Keep::BarsSince,
             "valuewhen" => Keep::ValueWhen,
             "changed" => Keep::Changed,
+            "delta" => Keep::Delta,
+            "cvd" => Keep::Cvd,
             _ => Keep::Cum,
         };
         self.hold(keep.held(), node.at)?;

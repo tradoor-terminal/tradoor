@@ -22,6 +22,8 @@ pub enum StudyKind {
     Sessions,
     Moon,
     VolumeDelta,
+    /// Cumulative volume delta: a running sum of each bar's, started again as its anchor turns over.
+    Cvd,
     VisibleProfile,
     KeyLevels,
     Avwap,
@@ -49,6 +51,7 @@ impl StudyKind {
             Self::Sessions => "sessions",
             Self::Moon => "moon",
             Self::VolumeDelta => "volumedelta",
+            Self::Cvd => "cvd",
             Self::VisibleProfile => "vpvr",
             Self::KeyLevels => "keylevels",
             Self::Avwap => "avwap",
@@ -74,6 +77,8 @@ pub enum Group {
     Oi,
     /// Bought less sold, in coins.
     Delta,
+    /// Bought less sold, added up: far larger than one bar's, so a pane apart from `Delta`.
+    Cvd,
     /// A VWAP of volume, in coins: no price, so a pane of its own.
     Volume,
     /// A formula's own pane: one each, by its place among the chart's formulas.
@@ -96,6 +101,7 @@ impl Group {
             Self::Atr => "atr",
             Self::Oi => "oi",
             Self::Delta => "delta",
+            Self::Cvd => "cvd",
             Self::Volume => "vol",
             Self::Formula(n) => FORMULA_PANES[usize::from(n) % FORMULA_PANES.len()],
         }
@@ -153,7 +159,7 @@ pub const FORMULA_COLORS: [(&str, &str, &str); 12] = [
     ("gray", "#787b86", "#787b8626"),
 ];
 
-pub static STUDIES: [StudyDefinition; 20] = [
+pub static STUDIES: [StudyDefinition; 21] = [
     StudyDefinition { kind: StudyKind::Ema, short: "EMA", group: Group::Price, params: &[p("length", 50, 2, 1000)] },
     StudyDefinition { kind: StudyKind::Sma, short: "SMA", group: Group::Price, params: &[p("length", 50, 2, 1000)] },
     StudyDefinition { kind: StudyKind::Bb, short: "BB", group: Group::Price, params: &[p("length", 20, 2, 1000), x("mult", 2.0, 0.1)] },
@@ -181,6 +187,8 @@ pub static STUDIES: [StudyDefinition; 20] = [
     StudyDefinition { kind: StudyKind::Moon, short: "Moon", group: Group::Price, params: &[] },
     // `view` 0 each bar's, 1 cumulative.
     StudyDefinition { kind: StudyKind::VolumeDelta, short: "Vol Delta", group: Group::Delta, params: &[p("view", 0, 0, 1)] },
+    // `reset` 0 never, else one more than a place in VWAP_ANCHORS; `view` 0 a line, 1 candles; `smooth` an EMA's length, 0 none.
+    StudyDefinition { kind: StudyKind::Cvd, short: "CVD", group: Group::Cvd, params: &[p("reset", 0, 0, 5), p("view", 0, 0, 1), p("smooth", 0, 0, 1000)] },
     // `side` 0 against the right edge, 1 the left.
     StudyDefinition { kind: StudyKind::VisibleProfile, short: "VPVR", group: Group::Price, params: &[p("rows", 24, 5, 200), p("va", 70, 1, 100), p("width", 30, 5, 90), p("side", 0, 0, 1)] },
     StudyDefinition { kind: StudyKind::Atr, short: "ATR", group: Group::Atr, params: &[p("length", 14, 2, 1000)] },
@@ -242,6 +250,17 @@ impl StudySpec {
         }
         if self.kind == StudyKind::VolumeDelta {
             return if self.param(0) == 1 { "CVD".to_string() } else { short.to_string() };
+        }
+        if self.kind == StudyKind::Cvd {
+            let mut label = short.to_string();
+            if let Some(anchor) = self.param(0).min(5).checked_sub(1) {
+                label += " ";
+                label += VWAP_ANCHORS[anchor];
+            }
+            if self.param(2) > 0 {
+                label += &format!(" · EMA {}", self.param(2));
+            }
+            return label;
         }
         if self.kind == StudyKind::VisibleProfile {
             return format!("{short} {}", self.param(0));
@@ -582,6 +601,7 @@ pub fn compute_study_with(spec: &StudySpec, candles: &[Candle], inputs: &StudyIn
         StudyKind::Sessions => (study.boxes, study.stats) = sessions(candles),
         StudyKind::Moon => study.markers = moon_marks(candles),
         StudyKind::VolumeDelta => (study.lines, study.stats) = volume_delta(candles, param(0) == 1),
+        StudyKind::Cvd => (study.lines, study.candles, study.stats) = cvd(candles, spec),
         // The bars on screen are the chart's to know: it works the rows out as it
         // draws them, and these only carry the levels for the legend.
         StudyKind::VisibleProfile => {
@@ -744,15 +764,8 @@ fn volume_delta(candles: &[Candle], cumulative: bool) -> (Vec<StudyLine>, Vec<(&
     let values: Series = candles
         .iter()
         .map(|c| {
-            let range = c.high - c.low;
-            let delta = match c.taker_buy {
-                Some(buy) => 2.0 * buy - c.volume,
-                None if range > 0.0 => {
-                    estimated += 1;
-                    c.volume * (2.0 * (c.close - c.low) / range - 1.0)
-                }
-                None => 0.0,
-            };
+            let (delta, guessed) = indicators::bar_delta(c.volume, c.taker_buy, c.high, c.low, c.close);
+            estimated += usize::from(guessed);
             sum += delta;
             (c.volume > 0.0).then_some(if cumulative { sum } else { delta })
         })
@@ -767,6 +780,72 @@ fn volume_delta(candles: &[Candle], cumulative: bool) -> (Vec<StudyLine>, Vec<(&
     };
     let line = if cumulative { StudyLine::line("cvd", "CVD", values) } else { StudyLine { kind: LineType::Histogram, ..StudyLine::line("histogram", "Delta", values) } };
     (vec![line], stats)
+}
+
+/// Cumulative volume delta as a candle a bar, `[open, high, low, close]`: from
+/// the sum before the bar to the sum after it, started again from 0 as `anchor`
+/// turns over (a place in VWAP_ANCHORS; never at None). Also how many bars were
+/// estimated, and whether the newest was: the forming bar has no buyers
+/// reported until it closes.
+pub fn cvd_bars(candles: &[Candle], anchor: Option<usize>) -> (Vec<[f64; 4]>, usize, bool) {
+    let (mut sum, mut turn, mut estimated, mut last) = (0.0f64, None, 0, false);
+    let bars = candles
+        .iter()
+        .map(|c| {
+            if let Some(a) = anchor {
+                let now = anchor_period(c.open_time, a);
+                if turn.is_some_and(|t| t != now) {
+                    sum = 0.0;
+                }
+                turn = Some(now);
+            }
+            let (delta, guessed) = indicators::bar_delta(c.volume, c.taker_buy, c.high, c.low, c.close);
+            (estimated, last) = (estimated + usize::from(guessed), guessed);
+            let open = sum;
+            if delta.is_finite() {
+                sum += delta;
+            }
+            [open, open.max(sum), open.min(sum), sum]
+        })
+        .collect();
+    (bars, estimated, last)
+}
+
+const CVD_COLOR: &str = "#2962ff";
+const CVD_EMA_COLOR: &str = "#ff9800";
+
+/// Cumulative volume delta, as a line or as candles of each bar's move, with an
+/// EMA of it where asked. The legend says where the delta is estimated.
+fn cvd(candles: &[Candle], spec: &StudySpec) -> (Vec<StudyLine>, Vec<Option<[f64; 4]>>, Vec<(&'static str, String)>) {
+    let anchor = spec.param(0).min(5).checked_sub(1);
+    let (as_candles, smooth) = (spec.param(1) == 1, spec.param(2));
+    let silent = !candles.is_empty() && candles.iter().all(|c| !(c.volume > 0.0));
+    let (bars, estimated, newest) = cvd_bars(candles, anchor);
+    let bars: Vec<Option<[f64; 4]>> = bars.into_iter().map(|b| (!silent).then_some(b)).collect();
+    let pick = |k: usize| -> Series { bars.iter().map(|b| b.map(|b| b[k])).collect() };
+    let close = pick(3);
+    let n = candles.len();
+    let stats = if silent {
+        vec![("Volume", "none in this market".to_string())]
+    } else if estimated == 0 {
+        vec![("Delta", "taker buys".to_string())]
+    } else if estimated == 1 && newest && n > 1 {
+        vec![("Delta", "taker buys, forming bar estimated".to_string())]
+    } else if estimated == n {
+        vec![("Delta", "estimated from the close in the range".to_string())]
+    } else {
+        vec![("Estimated", format!("{estimated} of {n} bars"))]
+    };
+    let mut lines = if as_candles {
+        let hidden = |key: &'static str, label: &'static str, values: Series| StudyLine { style: LineStyle::None, badge: false, ..StudyLine::line(key, label, values) };
+        vec![hidden("open", "O", pick(0)), hidden("high", "H", pick(1)), hidden("low", "L", pick(2)), StudyLine { style: LineStyle::None, color: Some(CVD_COLOR), ..StudyLine::line("cvd", "CVD", close.clone()) }]
+    } else {
+        vec![StudyLine { width: 1.5, ..StudyLine::inked("cvd", "CVD", close.clone(), CVD_COLOR) }]
+    };
+    if smooth > 0 {
+        lines.push(StudyLine { color: Some(CVD_EMA_COLOR), ..StudyLine::line("ema", format!("EMA {smooth}"), indicators::ema(&close, smooth)) });
+    }
+    (lines, if as_candles { bars } else { Vec::new() }, stats)
 }
 
 /// Fold open interest steps into the chart's bars, the forming one last: each
@@ -1776,6 +1855,68 @@ mod tests {
         let study = compute_study(&parse_studies("volumedelta", 12)[0], &silent);
         assert_eq!(line(&study, "histogram"), &vec![None]);
         assert_eq!(study.stats[0].0, "Volume");
+    }
+
+    #[test]
+    fn cvd_adds_up_the_buyers_and_starts_again_at_its_anchor() {
+        // Hourly bars from 22:00 to 01:00: a UTC day turns over between the second and third.
+        let t0 = parse_iso("2026-08-03T22:00:00Z").unwrap();
+        let bar = |i: i64, close: f64, taker_buy: Option<f64>| Candle { open_time: t0 + i * HOUR, open: 100.0, high: 110.0, low: 90.0, close, volume: 10.0, quote_volume: None, taker_buy };
+        let exact = [bar(0, 100.0, Some(7.0)), bar(1, 100.0, Some(2.0)), bar(2, 100.0, Some(8.0)), bar(3, 100.0, Some(5.0))];
+        let study = compute_study(&parse_studies("cvd", 12)[0], &exact);
+        assert_eq!((study.id.as_str(), study.label.as_str(), study.group), ("cvd:0:0:0", "CVD", Group::Cvd));
+        assert_eq!(line(&study, "cvd"), &vec![Some(4.0), Some(-2.0), Some(4.0), Some(4.0)], "a running sum of 4, -6, 6, 0");
+        assert!(study.candles.is_empty(), "a line has no candles");
+        assert_eq!(study.stats, vec![("Delta", "taker buys".to_string())]);
+
+        let session = compute_study(&parse_studies("cvd:1", 12)[0], &exact);
+        assert_eq!(session.label, "CVD Session");
+        assert_eq!(line(&session, "cvd"), &vec![Some(4.0), Some(-2.0), Some(6.0), Some(6.0)], "from 0 again at midnight");
+        let weekly = compute_study(&parse_studies("cvd:2", 12)[0], &exact);
+        assert_eq!(line(&weekly, "cvd"), line(&study, "cvd"), "a Monday to Tuesday night is one week");
+
+        // Each bar a candle from the sum before it to the sum after.
+        let candles = compute_study(&parse_studies("cvd:1:1", 12)[0], &exact);
+        assert_eq!(candles.candles, vec![Some([0.0, 4.0, 0.0, 4.0]), Some([4.0, 4.0, -2.0, -2.0]), Some([0.0, 6.0, 0.0, 6.0]), Some([6.0, 6.0, 6.0, 6.0])]);
+        assert_eq!(candles.lines.iter().map(|l| l.key).collect::<Vec<_>>(), ["open", "high", "low", "cvd"]);
+        assert!(candles.lines.iter().all(|l| l.style == LineStyle::None), "the candles are drawn, not the lines");
+
+        let smoothed = compute_study(&parse_studies("cvd:0:0:2", 12)[0], &exact);
+        assert_eq!(smoothed.label, "CVD · EMA 2");
+        assert_eq!(line(&smoothed, "ema"), &indicators::ema(line(&smoothed, "cvd"), 2));
+    }
+
+    #[test]
+    fn cvd_estimates_where_buyers_are_not_reported_and_says_so() {
+        let t0 = parse_iso("2026-08-03").unwrap();
+        let bar = |i: i64, close: f64, volume: f64, taker_buy: Option<f64>| Candle { open_time: t0 + i * HOUR, open: 100.0, high: 110.0, low: 90.0, close, volume, quote_volume: None, taker_buy };
+        let guess = [bar(0, 110.0, 10.0, None), bar(1, 95.0, 10.0, None), bar(2, 90.0, 10.0, None)];
+        let study = compute_study(&parse_studies("cvd", 12)[0], &guess);
+        assert_eq!(line(&study, "cvd"), &vec![Some(10.0), Some(5.0), Some(-5.0)]);
+        assert_eq!(study.stats[0].0, "Delta");
+        assert!(study.stats[0].1.starts_with("estimated"));
+
+        // The forming bar: its buyers come only as it closes, so it alone is estimated, and it moves the sum.
+        let mut forming = [bar(0, 100.0, 10.0, Some(7.0)), bar(1, 100.0, 10.0, Some(2.0)), bar(2, 110.0, 4.0, None)];
+        let study = compute_study(&parse_studies("cvd:0:1", 12)[0], &forming);
+        assert_eq!(line(&study, "cvd"), &vec![Some(4.0), Some(-2.0), Some(2.0)]);
+        assert_eq!(study.candles.last(), Some(&Some([-2.0, 2.0, -2.0, 2.0])));
+        assert_eq!(study.stats, vec![("Delta", "taker buys, forming bar estimated".to_string())]);
+        forming[2].close = 90.0;
+        let ticked = compute_study(&parse_studies("cvd:0:1", 12)[0], &forming);
+        assert_eq!(ticked.candles.last(), Some(&Some([-2.0, -2.0, -6.0, -6.0])), "a tick moves the forming bar's candle");
+
+        let mixed = [bar(0, 110.0, 10.0, None), bar(1, 100.0, 10.0, Some(5.0)), bar(2, 100.0, 10.0, Some(5.0))];
+        assert_eq!(compute_study(&parse_studies("cvd", 12)[0], &mixed).stats, vec![("Estimated", "1 of 3 bars".to_string())]);
+
+        // A bar with no trades holds the sum; a market with none has no CVD.
+        let quiet = [bar(0, 110.0, 10.0, None), bar(1, 100.0, 0.0, None)];
+        assert_eq!(line(&compute_study(&parse_studies("cvd", 12)[0], &quiet), "cvd"), &vec![Some(10.0), Some(10.0)]);
+        let silent = [bar(0, 100.0, 0.0, None)];
+        let study = compute_study(&parse_studies("cvd:0:1", 12)[0], &silent);
+        assert_eq!((line(&study, "cvd"), study.candles.clone()), (&vec![None], vec![None]));
+        assert_eq!(study.stats[0].0, "Volume");
+        assert!(compute_study(&parse_studies("cvd", 12)[0], &[]).lines[0].values.is_empty());
     }
 
     #[test]

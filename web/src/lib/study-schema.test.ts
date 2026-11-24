@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 import { assertEquals } from 'jsr:@std/assert@1';
 import type { StudyDefinition } from '../engine/protocol.ts';
-import { anotherId, CATEGORIES, currentDefault, defaultId, entries, instanceLabel, LAYER_DEFS, paramOrder, searchEntries, startingStyles, startingValues, studyId, studyPlots, toHex } from './study-schema.ts';
+import { anotherId, CATEGORIES, currentDefault, defaultId, entries, instanceLabel, LAYER_DEFS, paramOrder, paramUi, searchEntries, startingStyles, startingValues, studyId, studyPlots, toHex } from './study-schema.ts';
 
 const param = (name: string, value: number, min = 1, max = 1000, step = 1) => ({ name, default: value, min, max, step });
 const defs: StudyDefinition[] = [
@@ -115,4 +115,30 @@ Deno.test('a study saved as the default keeps its own styles by kind and the pan
   assertEquals(startingStyles(chart, 'rsi', 'rsi:21', saved), { 'pct/upper': '75', 'ema:50/ema': '#00ff00,,', 'rsi:21/rsi': '#ff0000,2,' });
   assertEquals(startingStyles({}, 'rsi', 'rsi:21', saved), { 'pct/upper': '70', 'rsi:21/rsi': '#ff0000,2,' });
   assertEquals(startingStyles(chart, 'rsi', 'rsi:21', null), chart);
+});
+
+Deno.test('cvd is filed with the flow studies, lists its plots by display, and saves as a default', () => {
+  const cvd: StudyDefinition = { kind: 'cvd', short: 'CVD', group: 'cvd', params: [param('reset', 0, 0, 5), param('view', 0, 0, 1), param('smooth', 0, 0, 1000)] };
+  const entry = entries([cvd])[0]!;
+  assertEquals([entry.name, entry.category, entry.where], ['Cumulative Volume Delta', 'Flow and positioning', 'own pane']);
+  assertEquals(searchEntries(entries([...defs, cvd]), 'cvd')[0]?.id, 'cvd');
+  assertEquals(defaultId(cvd), 'cvd:0:0:0');
+  assertEquals(anotherId(cvd, ['cvd:0:0:0']), 'cvd:1:0:0', 'one that starts again each session');
+  assertEquals(instanceLabel('cvd:2:1:20'), 'On chart');
+  assertEquals(paramUi('cvd', cvd.params[0]!).options?.[5], 'Quarter');
+  assertEquals(paramUi('cvd', cvd.params[1]!).options, ['Line', 'Candles']);
+
+  const line = (id: string, key: string, width: number) => ({ id: `${id}:${key}`, label: key, color: '#2962ff', width });
+  const keys = (id: string, lines: ReturnType<typeof line>[]) => studyPlots(id, lines).map((p) => [p.key, p.label]);
+  assertEquals(keys('cvd:0:0:20', [line('cvd:0:0:20', 'cvd', 1.5), line('cvd:0:0:20', 'ema', 1)]), [['cvd', 'CVD'], ['ema', 'EMA of CVD'], ['zero', 'Zero line']]);
+  const candles = 'cvd:0:1:0';
+  assertEquals(keys(candles, ['open', 'high', 'low', 'cvd'].map((k) => line(candles, k, 0))), [['up', 'Rising'], ['down', 'Falling'], ['zero', 'Zero line']], 'candles: their colours, the line unstroked');
+  const zero = studyPlots('cvd:0:0:0', [])[0]!;
+  assertEquals([zero.theme, zero.pattern, zero.noToggle], ['text', '1', undefined], 'dashed, and can be hidden');
+
+  const styles = { 'cvd:1:1:9/up': '#00ff00,,', 'cvd:1:1:9/zero': ',2,0', 'cvd:0:0:0/cvd': '#ff0000,,' };
+  const saved = currentDefault('cvd', 'cvd:1:1:9', [1, 1, 9], styles, []);
+  assertEquals(saved, { params: [1, 1, 9], styles: { 'cvd/up': '#00ff00,,', 'cvd/zero': ',2,0' } });
+  assertEquals(startingValues(cvd, saved), [1, 1, 9]);
+  assertEquals(startingStyles({}, 'cvd', 'cvd:1:1:9', saved), { 'cvd:1:1:9/up': '#00ff00,,', 'cvd:1:1:9/zero': ',2,0' });
 });

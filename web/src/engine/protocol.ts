@@ -236,6 +236,8 @@ export interface ChartBars {
   low: Float64Array;
   close: Float64Array;
   volume: Float64Array;
+  /** What market buyers took; -1 where the exchange does not say, and none at all for a market that never does. */
+  buy?: Float64Array;
 }
 
 /** Numbers a trade is written as in `BacktestResult.trades`: see TRADE_FIELDS in lib/backtest. */

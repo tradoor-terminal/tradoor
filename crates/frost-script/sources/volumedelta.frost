@@ -1,0 +1,7 @@
+// Volume Delta
+// What market buyers took less what market sellers did in each bar, green above
+// zero and red below. Exact where the exchange reports its buyers, as Binance
+// does; elsewhere estimated from where the bar closed in its range.
+pane own
+move = delta()
+histogram(move, "Delta", move >= 0 ? alpha(green, 0.5) : alpha(red, 0.5))

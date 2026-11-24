@@ -305,6 +305,7 @@ upper, lower = band(base, atr(14))</code></pre>
       <tr><td><code>crossover crossunder cross</code> (a, b)</td><td>True on the bar <code>a</code> goes from at or below <code>b</code> to above it, the other way, or either.</td></tr>
       <tr><td><code>barssince(c)</code>, <code>valuewhen(c, x)</code></td><td>Bars since <code>c</code> was last true (0 on that bar), and <code>x</code> as it was then.</td></tr>
       <tr><td><code>changed(x)</code>, <code>cum(x)</code></td><td>True on a bar where <code>x</code> is not what it was a bar ago; the sum of every <code>x</code> so far.</td></tr>
+      <tr><td><code>delta()</code>, <code>cvd()</code>, <code>cvd(c)</code></td><td>What market buyers took less what market sellers did in the bar, and the sum of it so far: cumulative volume delta, started again from 0 on each bar <code>c</code> is true, as <code>cvd(changed(week))</code>. Exact where the exchange reports its buyers, as Binance does; elsewhere, and on the forming bar until it closes, estimated from where the bar closed in its range.</td></tr>
     </table>
     <p>An average that meets <code>na</code> starts over after it, as the built-in indicators do.</p>
 
@@ -420,7 +421,7 @@ stop(inlong ? entryprice * 0.98 : entryprice * 1.02)</code></pre>
     <p>Its report: the figures (net profit against holding the coin, drawdown, profit factor, Sharpe and more), every trade, the equity and its drawdowns, the months, how the results spread, how far each trade went against it, and the trades drawn again at random a thousand times. The optimizer tries a grid of a script's settings, and can keep part of the bars back to judge its pick on bars it never saw; <b>Markets</b> runs the same strategy on your watchlists' markets. A forward test reports the trades from the moment it starts apart, and a notice can say when a bar closes with an order, while tradoor is open.</p>
 
     <h2 id="examples">Examples</h2>
-    <p>The editor's examples are tradoor's built-in indicators written in Frost Script, each giving exactly the built-in's numbers: SMA, EMA, the EMA 12/25 ribbon and EMA 200, Bollinger Bands, Keltner Channels, Ichimoku, RSI, Stochastic RSI, MACD, ATR, VWAP, anchored VWAP, the historical key levels, the swing structure map, trading sessions, moon phases and volume, and a SuperTrend. Open any of them, or any built-in's <b>Source</b> tab, to read it.</p>
+    <p>The editor's examples are tradoor's built-in indicators written in Frost Script, each giving exactly the built-in's numbers: SMA, EMA, the EMA 12/25 ribbon and EMA 200, Bollinger Bands, Keltner Channels, Ichimoku, RSI, Stochastic RSI, MACD, ATR, VWAP, anchored VWAP, the historical key levels, the swing structure map, trading sessions, moon phases, volume, volume delta and cumulative volume delta, and a SuperTrend. Open any of them, or any built-in's <b>Source</b> tab, to read it.</p>
     <h3>SuperTrend, with a mark at each turn</h3>
 <pre><code>input length = 10 min 1 max 1000 "ATR length"
 input mult = 3 min 0.1 max 10 step 0.1 "Multiplier"

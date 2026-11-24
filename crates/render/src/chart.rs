@@ -951,7 +951,9 @@ impl Chart {
             if self.hidden.contains(&study.id) || !reads_bars(spec.kind) || same_bar && (drawn || oi && open_interest_live(spec, study, &self.candles, &inputs)) {
                 continue;
             }
-            let mut tail = if same_bar && !oi { *kept } else { n };
+            // CVD is a sum from its anchor, which the last bars alone never agree on, and its
+            // candles are no line to splice: one pass over the bars is all it costs.
+            let mut tail = if same_bar && !oi && spec.kind != StudyKind::Cvd { *kept } else { n };
             loop {
                 let at = from(tail);
                 let part = compute_study_with(spec, if at == 0 { study_bars(spec.kind, &self.candles, &self.bars) } else { &self.bars[at..] }, &inputs);
@@ -1553,6 +1555,7 @@ impl Chart {
                 "macd" => Group::Macd,
                 "atr" => Group::Atr,
                 "delta" => Group::Delta,
+                "cvd" => Group::Cvd,
                 "vol" => Group::Volume,
                 "oi" => Group::Oi,
                 fx => match tradoor_core::studies::FORMULA_PANES.iter().position(|p| *p == fx) {
@@ -2481,6 +2484,19 @@ impl Chart {
         for (index, study) in self.visible_studies() {
             let Some(pane) = self.panes.iter().find(|p| p.group == self.pane_group(study)) else { continue };
             f.clip(Some(pane.plot));
+            if study.kind == StudyKind::Cvd {
+                let zero = self.styles.of(&study.id, "zero");
+                if !zero.off {
+                    let y = pane.scale.y(0.0) as f32;
+                    let ink = zero.color.unwrap_or(self.theme.text.with_alpha(0x66));
+                    let width = zero.width.unwrap_or(1.0);
+                    match zero.pattern.unwrap_or(Pattern::Dashed) {
+                        Pattern::Solid => f.hline(0.0, pane.plot.w, y, width, ink),
+                        Pattern::Dashed => f.dashed_line(0.0, y, pane.plot.w, y, width, ink, 4.0, 4.0),
+                        Pattern::Dotted => f.dashed_line(0.0, y, pane.plot.w, y, width, ink, 1.0, 3.0),
+                    }
+                }
+            }
             self.paint_study_candles(f, &pane.scale, &study.candles, i0, i1, body, &study.id);
             // A line can run past the last bar: to what is on screen, not to the bars.
             let far = (to.ceil() + 1.0).max(0.0) as usize;
@@ -2750,7 +2766,7 @@ impl Chart {
                 Group::Pct | Group::Stoch => 2,
                 _ => ticks::step_decimals(&ticks).max(2),
             };
-            let label = |v: f64| if matches!(pane.group, Group::Oi | Group::Delta | Group::Volume) { format_compact(v) } else { format_price(v, Some(decimals)) };
+            let label = |v: f64| if matches!(pane.group, Group::Oi | Group::Delta | Group::Cvd | Group::Volume) { format_compact(v) } else { format_price(v, Some(decimals)) };
             for v in ticks {
                 let y = pane.scale.y(v) as f32;
                 let near_badge = badges.iter().any(|b| b.pane == pi && (b.y - y).abs() < badge_h);
@@ -3347,7 +3363,7 @@ impl Chart {
     fn format_value(&self, group: Group, v: f64) -> String {
         match group {
             Group::Price => format_price(v, Some(self.precision())),
-            Group::Oi | Group::Delta | Group::Volume => format_compact(v),
+            Group::Oi | Group::Delta | Group::Cvd | Group::Volume => format_compact(v),
             // A formula's own pane holds whatever it works out: decimals by its size, read with no logarithm.
             Group::Formula(_) => {
                 let a = v.abs();
@@ -6303,6 +6319,31 @@ mod tests {
         assert_eq!(c.legend().index, Some(500));
         c.set_live(Some(LiveBar { open_time: last.open_time, open: 1.0, high: 1.0, low: 1.0, close: 1.0, volume: 1.0, closed: false }));
         assert!(c.live.is_none(), "a bar that is already stored is not forming");
+    }
+
+    #[test]
+    fn cvd_runs_to_the_forming_bar_in_its_own_pane_and_each_tick_moves_its_candle() {
+        const T: i64 = 1_800_000_000_000;
+        let mut c = chart();
+        c.set_studies("volumedelta,cvd:0:1:5");
+        c.render(T - 1);
+        assert_eq!(c.panes.iter().map(|p| p.group).collect::<Vec<_>>(), [Group::Price, Group::Delta, Group::Cvd]);
+        let n = c.candles().len();
+        let last = *c.candles().last().unwrap();
+        let tick = |close: f64| LiveBar { open_time: last.open_time + HOUR, open: 120.0, high: 130.0, low: 110.0, close, volume: 10.0, closed: false };
+        let whole = |c: &Chart| compute_study_with(&c.study_specs[1], &c.bars, &c.study_inputs());
+        for (at, close) in [(T, 130.0), (T + 1, 110.0), (T + SETTLE_MS, 110.0)] {
+            c.set_live(Some(tick(close)));
+            c.render(at);
+        }
+        let cvd = &c.studies[1];
+        assert_eq!(cvd.candles.len(), n + 1, "the forming bar has its candle");
+        let [open, _, _, close] = cvd.candles[n].unwrap();
+        assert!((close - open + 10.0).abs() < 1e-9, "closed at the low, all sold: {open} to {close}");
+        let fresh = whole(&c);
+        assert_eq!(cvd.candles, fresh.candles, "as the whole would have it");
+        assert_eq!(cvd.lines.iter().map(|l| &l.values).collect::<Vec<_>>(), fresh.lines.iter().map(|l| &l.values).collect::<Vec<_>>());
+        assert!(c.legend().values.iter().any(|(k, v)| k == "cvd:0:1:5:cvd" && v != "—"));
     }
 
     #[test]

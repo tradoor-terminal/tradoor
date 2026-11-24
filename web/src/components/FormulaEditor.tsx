@@ -384,7 +384,7 @@ export function FormulaEditor(props: { id?: string; seed?: { name: string; sourc
                     {tl('Bars:')} <code>open high low close volume hl2 hlc3 ohlc4 tr bar time</code>{tl(', and')} <code>day week month year</code>{tl(', which change as a new one begins.')} <code>na</code> {tl('is no value.')}
                   </p>
                   <p>
-                    {tl('Remembering past bars, outside')} <code>if</code> {tl('and')} <code>for</code>: <code>sma ema rma stdev highest lowest sum rsi atr change crossover crossunder barssince valuewhen changed</code>. Anywhere:{' '}
+                    {tl('Remembering past bars, outside')} <code>if</code> {tl('and')} <code>for</code>: <code>sma ema rma stdev highest lowest sum rsi atr change crossover crossunder barssince valuewhen changed cum delta cvd</code>. Anywhere:{' '}
                     <code>abs sqrt log exp pow round floor ceil min max clamp nz isna</code>.
                   </p>
                   <p>

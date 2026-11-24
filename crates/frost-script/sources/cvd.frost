@@ -1,0 +1,15 @@
+// Cumulative Volume Delta
+// What market buyers took less what market sellers did, added up bar by bar.
+// Exact where the exchange reports its buyers, as Binance does; elsewhere each
+// bar is estimated from where it closed in its range. It starts again from zero
+// as the chosen period turns over: a session is a UTC day.
+pane own
+input reset = "None" from "None", "Session", "Week", "Month", "Year", "Quarter" "Reset"
+input smoothing = false "EMA of it"
+input length = 14 min 1 max 1000 "EMA length"
+period = reset == "Session" ? day : reset == "Week" ? week : reset == "Month" ? month : reset == "Year" ? year : reset == "Quarter" ? floor(month / 3) : 0
+total = cvd(changed(period))
+average = ema(total, length)
+hline(0, "Zero", gray)
+plot(total, "CVD", blue)
+plot(smoothing ? average : na, "EMA", orange)

@@ -163,6 +163,8 @@ pub struct Bars<'a> {
     pub low: &'a [f64],
     pub close: &'a [f64],
     pub volume: &'a [f64],
+    /// What market buyers took, where the exchange says: below 0, NaN or past its end where it does not.
+    pub buy: &'a [f64],
 }
 
 impl Bars<'_> {
