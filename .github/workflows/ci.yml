@@ -35,7 +35,7 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: "2.9.6"
+          deno-version: "2.9.8"
 
       - name: Install wasm-bindgen and wasm-opt
         run: |

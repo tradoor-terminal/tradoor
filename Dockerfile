@@ -7,7 +7,7 @@
 # code rebuilds in minutes when that layer is cached, as it is in CI. Written for
 # the classic builder too, so it needs no BuildKit features.
 
-FROM denoland/deno:bin-2.9.6 AS deno
+FROM denoland/deno:bin-2.9.8 AS deno
 # Go builds the order system's Lighter signer (signers/lighter) to WebAssembly.
 FROM golang:1.27-trixie AS go
 
