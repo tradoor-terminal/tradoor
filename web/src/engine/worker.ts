@@ -279,6 +279,8 @@ class Slot {
   private formulasAt = 0;
   private formulaCost = 0;
   private formulaTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Destroyed: its engine is freed, and nothing may call it again. */
+  private freed = false;
   /** Markets the formulas read besides this chart's: see others.ts. Null until one asks. */
   private others: OtherMarkets | null = null;
   /** The strategy tester's: its bars are handed to the page as they change, and its trades drawn as it says. */
@@ -457,6 +459,7 @@ class Slot {
 
   /** Each formula over the closed bars the engine holds and the forming one, its lines handed to it; the module loads with the first. */
   private runFormulas(): void {
+    if (this.freed) return;
     clearTimeout(this.formulaTimer);
     this.formulaTimer = undefined;
     this.keepFormulas();
@@ -518,7 +521,7 @@ class Slot {
 
   /** The forming bar moved: formulas run over it again, but no more often than they can afford. */
   private formulasDue(): void {
-    if (this.formulas.length === 0 || this.formulaTimer !== undefined) return;
+    if (this.freed || this.formulas.length === 0 || this.formulaTimer !== undefined) return;
     const wait = this.formulasAt + Math.max(FORMULA_MS, 4 * this.formulaCost) - performance.now();
     this.formulaTimer = setTimeout(() => this.runFormulas(), Math.max(0, wait));
   }
@@ -577,6 +580,9 @@ class Slot {
   }
 
   destroy(): void {
+    // A formula run already asked for — a timer, the module still loading — finds the engine gone and does nothing.
+    this.freed = true;
+    clearTimeout(this.formulaTimer);
     this.gpuListening.abort();
     clearInterval(this.demo);
     clearTimeout(this.gpuTimer);
