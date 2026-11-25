@@ -112,6 +112,12 @@ const PATHS = {
   chat: 'M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.2A8 8 0 1 1 21 12zM8.5 12h.01M12 12h.01M15.5 12h.01',
   smile: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01',
   droplet: 'M12 3l5.5 5.5a7.8 7.8 0 1 1-11 0z',
+  /** The chart's types: candles, a line through the closes, a footprint's rows, TPO's letters stacked by price. */
+  candles: 'M7 3v3M7 18v3M5 6h4v12H5zM17 4v4M17 14v4M15 8h4v6h-4z',
+  linechart: 'M3 17l5-6 4 3 9-9',
+  footprint: 'M3 4h18v16H3zM12 4v16M3 9h18M3 14h18',
+  tpo: 'M4 4h3M4 8h8M4 12h14M4 16h9M4 20h4',
+  check: 'M5 12l4.5 4.5L19 7',
   /** GitHub's mark, drawn filled (`fill`, no stroke). */
 } as const;
 

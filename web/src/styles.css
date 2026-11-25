@@ -440,7 +440,20 @@ input.box:focus { border-color: var(--primary); outline: 0; }
 .swatch { display: flex; align-items: center; gap: 6px; font-size: .6875rem; color: var(--muted); }
 .swatch .name { flex: 1 1 auto; white-space: nowrap; }
 .swatch input.box.wide { flex: 1 1 220px; width: auto; min-width: 0; }
-.swatch input[type='color'] { width: 22px; height: 18px; padding: 0; border: 1px solid var(--border); background: none; }
+.swatch input[type='color'] { width: 26px; height: 20px; padding: 0; border: 1px solid var(--border); background: none; cursor: pointer; }
+.swatch { min-height: 26px; padding: 2px 4px; }
+.swatch:hover { background: var(--surface-2); }
+.swatch.changed .name { color: var(--text); }
+.color-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.color-group { padding: 10px 10px 8px; border: 1px solid var(--border); background: var(--surface-2); }
+.color-group h4 { margin: 0; color: var(--text); font-size: .71875rem; font-weight: 600; }
+.color-group p { margin: 2px 0 8px; color: var(--dim); font-size: .625rem; line-height: 1.4; }
+.color-group .swatches { gap: 2px; }
+.study-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.study-colors .chip { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); cursor: pointer; }
+.study-colors .chip input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.study-colors .chip span { pointer-events: none; color: #000c; font-size: .625rem; font-weight: 700; }
+.study-colors .chip.changed { outline: 1px solid var(--muted); outline-offset: 1px; }
 
 /* ------------------------------------------------------------ panels */
 .panelcol { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
@@ -464,6 +477,15 @@ input.box:focus { border-color: var(--primary); outline: 0; }
 .toolbar.fold4 > select { max-width: 78px; }
 .toolbar.fold5 .sep, .toolbar.fold5 .live .state { display: none; }
 .menu.fp-menu { min-width: 0; width: 214px; max-width: calc(100% - 8px); }
+.tb.chart-type { gap: 6px; }
+.menu.type-menu { min-width: 168px; padding: 3px 0; }
+.menu.type-menu button { justify-content: flex-start; gap: 10px; padding: 6px 10px; font-size: .75rem; }
+.menu.type-menu button > span { flex: 1; }
+.menu.type-menu button > svg:first-child { color: var(--muted); }
+.menu.type-menu button.cur > svg { color: var(--primary); }
+.menu-head { padding: 6px 8px 2px; color: var(--dim); font-size: .625rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.menu .group.tpo-periods { border-top: 0; padding: 2px 6px 6px; }
+.menu .group.tpo-periods button.cur { background: var(--primary); color: var(--bg); }
 .fp-menu .group { align-items: center; gap: 4px; padding: 6px; }
 .fp-menu .group .tb { width: auto; }
 .fp-menu .group .tb.on { background: var(--primary); color: var(--bg); }

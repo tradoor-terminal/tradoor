@@ -29,6 +29,7 @@ import { useDismiss } from '../lib/dismiss';
 import { decimalsOf, formatPrice, formatTurnover, MAX_PRICE_DECIMALS } from '../lib/format';
 import type { LastPrice } from '../lib/last-price';
 import { Icon, type IconName } from '../lib/icons';
+import { readPref, writePref } from '../lib/prefs';
 import { VenueTag } from '../lib/exchanges';
 import { WatchlistToggle } from '../components/WatchlistToggle';
 import { liquidationVenues } from '../lib/liquidation-venues';
@@ -253,6 +254,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   /** The TPO quick access menu, open at this x in the toolbar. */
   const [tpoMenu, setTpoMenu] = createSignal<number | null>(null);
   useDismiss(tpoMenu, () => setTpoMenu(null));
+  const [typeMenu, setTypeMenu] = createSignal<number | null>(null);
+  useDismiss(typeMenu, () => setTypeMenu(null));
   /** A folded toolbar's footprint options, open at this x in it. */
   const [footprintMenu, setFootprintMenu] = createSignal<number | null>(null);
   useDismiss(footprintMenu, () => setFootprintMenu(null));
@@ -262,6 +265,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
 
   let box!: HTMLDivElement;
   let tpoButton!: HTMLButtonElement;
+  let typeButton!: HTMLButtonElement;
 
   /** A bar replay, as the worker last said it stands. */
   const [replayState, setReplayState] = createSignal<ReplayState>({ at: null, ended: false, base: 0 });
@@ -346,6 +350,26 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   });
   const footprintOn = () => !props.training && props.panel.footprint === true && footprintable() && !tpoShown();
   const lineOn = () => props.panel.line === true && !tpoShown() && !footprintOn();
+  /** What the chart draws its bars as. TPO is one type: its period is picked in its quick settings. */
+  const chartType = () => (tpoShown() ? 'tpo' : footprintOn() ? 'footprint' : lineOn() ? 'line' : 'candles');
+  const fittingSplits = () => TPO_SPLITS.filter((s) => tpoFits(s.value, timeframe()));
+  const chartTypes = (): { value: string; label: string; icon: IconName }[] => [
+    { value: 'candles', label: 'Candles', icon: 'candles' },
+    { value: 'line', label: 'Line', icon: 'linechart' },
+    ...(footprintable() ? [{ value: 'footprint', label: 'Footprint', icon: 'footprint' as const }] : []),
+    ...(fittingSplits().length > 0 ? [{ value: 'tpo', label: 'TPO', icon: 'tpo' as const }] : []),
+  ];
+  /** TPO in the period last picked, in this browser, where this timeframe can stack it; Daily to begin with. */
+  const setChartType = (type: string) => {
+    const fits = fittingSplits();
+    const tpo = type === 'tpo' ? (fits.find((s) => s.value === readPref('tpoSplit')) ?? fits.find((s) => s.value === '1d') ?? fits[0])?.value ?? '' : '';
+    patchPanel(id, { tpo, footprint: type === 'footprint', line: type === 'line' });
+    setTypeMenu(null);
+  };
+  const setTpoSplit = (value: string) => {
+    writePref('tpoSplit', value);
+    patchPanel(id, { tpo: value });
+  };
   /** The footprint is being fetched or read, and nothing of it is on the chart yet. */
   const [fpLoading, setFpLoading] = createSignal(false);
   /** A replay stands where there is no footprint at all. */
@@ -916,8 +940,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   // The reader's formulas on it, with their text: again when one is edited.
   createEffect(() => send({ t: 'formulas', id: sid, value: formulaRuns(props.panel.studies) }));
   createEffect(() => send({ t: 'hidden', id: sid, value: props.panel.hidden }));
-  // The line chart rides with the styles: the engine draws the closes as a line where `price/line` has a width.
-  createEffect(() => send({ t: 'studyStyles', id: sid, value: serializeStyles(props.panel.studyStyles) + (lineOn() ? ';price/line=,2' : '') }));
+  // The line chart rides with the styles: the engine draws the closes as a line where `price/line` has a width, in the theme's colour.
+  createEffect(() => send({ t: 'studyStyles', id: sid, value: serializeStyles(props.panel.studyStyles) + (lineOn() ? `;price/line=${doc.theme.line ?? '#2962ff'},2` : '') }));
   createEffect(() => send({ t: 'log', id: sid, value: props.panel.log }));
   createEffect(() => send({ t: 'tpo', id: sid, value: split() ?? '' }));
   createEffect(() => send({ t: 'tpoSettings', id: sid, value: serializeTpo(props.panel.tpoSettings) }));
@@ -1682,66 +1706,19 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         </button>
         </Show>
         <span class="sep" />
+        <Show when={!props.training}>
         <button
-          class="tb"
-          data-tip="Copy a 4K picture of this chart · alt K — hold shift to save the file"
-          aria-label={tl('Copy a picture of this chart')}
-          onClick={(e) => capture(e.shiftKey)}
+          ref={typeButton}
+          class="tb chart-type"
+          data-tip="How the bars are drawn: candles, a line through the closes, the footprint's volume by price, or TPO profiles"
+          aria-haspopup="menu"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setTypeMenu((v) => (v === null ? typeButton.offsetLeft - bar.scrollLeft : null))}
         >
-          <Icon name="camera" size={13} />
+          <Icon name={chartTypes().find((t) => t.value === chartType())?.icon ?? 'candles'} size={14} />
+          <span class="tb-word">{tl(chartTypes().find((t) => t.value === chartType())?.label ?? 'Candles')}</span>
+          <Icon name="chevron" size={10} />
         </button>
-        <span class="sep" />
-        <button class="tb" aria-label={tl('Add an indicator')} data-tip="Add an indicator" onClick={() => setOverlay({ kind: 'indicators', panelId: id })}>
-          <Icon name="indicators" size={13} />
-          <span class="tb-word">{tl('Indicators')}</span>
-          <Show when={studyCount() > 0}>
-            <span class="dim">{studyCount()}</span>
-          </Show>
-        </button>
-        <Show when={!props.training}>
-          <button
-            class="tb replay-btn"
-            classList={{ on: replayOpen() }}
-            aria-label={tl('Bar replay')}
-            data-tip="Bar replay — pick a bar, hide what came after it, and play the market forward from there"
-            onClick={() => (replayOpen() ? replayToRealTime(true) : pickReplayBar())}
-          >
-            <Icon name="replay" size={13} />
-            <span>{tl('Replay')}</span>
-          </button>
-          <button class="tb" classList={{ on: !!tester()?.open }} aria-label={tl('Strategy tester')} data-tip="Strategy tester — backtest a strategy on this chart’s bars, worked out in your browser" onClick={toggleTester}>
-            <Icon name="flask" size={13} />
-            <span class="tb-word">{tl('Backtest')}</span>
-          </button>
-        </Show>
-        <Show when={!props.training}>
-        <span class="sep" />
-        <select
-          data-tip="Candles, a line, the footprint's own volume by price, or TPO profiles — the candles are the brackets, the split is how long a profile runs"
-          onChange={(e) => {
-            const v = e.currentTarget.value;
-            patchPanel(id, { tpo: v === 'footprint' || v === 'line' ? '' : v, footprint: v === 'footprint', line: v === 'line' });
-          }}
-        >
-          <option value="" selected={!split() && !footprintOn() && !lineOn()}>
-            {tl('Candles')}
-          </option>
-          <option value="line" selected={lineOn()}>
-            {tl('Line')}
-          </option>
-          <Show when={footprintable()}>
-            <option value="footprint" selected={footprintOn()}>
-              {tl('Footprint')}
-            </option>
-          </Show>
-          <For each={TPO_SPLITS.filter((s) => tpoFits(s.value, timeframe()))}>
-            {(s) => (
-              <option value={s.value} selected={split() === s.value}>
-                TPO · {tl(s.label)}
-              </option>
-            )}
-          </For>
-        </select>
         </Show>
         <Show when={footprintOn()}>
           <span class="sep" />
@@ -1770,6 +1747,39 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
             <Icon name="chevron" size={11} />
           </button>
         </Show>
+        <span class="sep" />
+        <button class="tb" aria-label={tl('Add an indicator')} data-tip="Add an indicator" onClick={() => setOverlay({ kind: 'indicators', panelId: id })}>
+          <Icon name="indicators" size={13} />
+          <span class="tb-word">{tl('Indicators')}</span>
+          <Show when={studyCount() > 0}>
+            <span class="dim">{studyCount()}</span>
+          </Show>
+        </button>
+        <Show when={!props.training}>
+          <button
+            class="tb replay-btn"
+            classList={{ on: replayOpen() }}
+            aria-label={tl('Bar replay')}
+            data-tip="Bar replay — pick a bar, hide what came after it, and play the market forward from there"
+            onClick={() => (replayOpen() ? replayToRealTime(true) : pickReplayBar())}
+          >
+            <Icon name="replay" size={13} />
+            <span>{tl('Replay')}</span>
+          </button>
+          <button class="tb" classList={{ on: !!tester()?.open }} aria-label={tl('Strategy tester')} data-tip="Strategy tester — backtest a strategy on this chart’s bars, worked out in your browser" onClick={toggleTester}>
+            <Icon name="flask" size={13} />
+            <span class="tb-word">{tl('Backtest')}</span>
+          </button>
+        </Show>
+        <span class="sep" />
+        <button
+          class="tb"
+          data-tip="Copy a 4K picture of this chart · alt K — hold shift to save the file"
+          aria-label={tl('Copy a picture of this chart')}
+          onClick={(e) => capture(e.shiftKey)}
+        >
+          <Icon name="camera" size={13} />
+        </button>
         <span class="spacer" />
         <LiveBadge market={market()} live={status().live} relayed={status().relayed} price={price()} replay={replaying()} />
       </div>
@@ -1782,9 +1792,39 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         )}
       </Show>
 
+      <Show when={typeMenu()} keyed>
+        {(left) => (
+          <div class="menu type-menu" role="menu" style={{ left: `${Math.max(0, Math.min(left, box.clientWidth - 200))}px`, top: '25px' }} onPointerDown={(e) => e.stopPropagation()}>
+            <For each={chartTypes()}>
+              {(t) => (
+                <button role="menuitemradio" aria-checked={chartType() === t.value} classList={{ cur: chartType() === t.value }} onClick={() => setChartType(t.value)}>
+                  <Icon name={t.icon} size={14} />
+                  <span>{tl(t.label)}</span>
+                  <Show when={chartType() === t.value}>
+                    <Icon name="check" size={13} stroke={2.2} />
+                  </Show>
+                </button>
+              )}
+            </For>
+          </div>
+        )}
+      </Show>
+
       <Show when={tpoMenu()} keyed>
         {(left) => (
-          <div class="menu" style={{ left: `${Math.max(0, Math.min(left - 170, box.clientWidth - 200))}px`, top: '25px', 'min-width': '220px' }} onPointerDown={(e) => e.stopPropagation()}>
+          <div class="menu" style={{ left: `${Math.max(0, Math.min(left - 170, box.clientWidth - 250))}px`, top: '25px', width: '240px' }} onPointerDown={(e) => e.stopPropagation()}>
+            {/* How long a profile runs: the one picked is remembered for the next TPO chart. */}
+            <div class="menu-head">{tl('Period')}</div>
+            <div class="group tpo-periods">
+              <For each={fittingSplits()}>
+                {(sp) => (
+                  <button classList={{ cur: split() === sp.value }} onClick={() => setTpoSplit(sp.value)}>
+                    {tl(sp.label)}
+                  </button>
+                )}
+              </For>
+            </div>
+            <hr />
             {/* The options read most often, a click away; kept inside the panel. */}
             <For
               each={[

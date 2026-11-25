@@ -5,7 +5,7 @@ import { OWNER_PATTERN, ownerId, session, switchOwner } from '../lib/owner';
 import { ALL_EXCHANGES, ExchangeLogo } from '../lib/exchanges';
 import { Icon, type IconName } from '../lib/icons';
 import { deviceZone, LOCAL_ZONE, offsetLabel, offsetMinutes, TIME_ZONE_KEY, timeZone } from '../lib/timezone';
-import { CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME } from '../lib/theme';
+import { CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME, type ChartGroup } from '../lib/theme';
 import { THEMES, themeOf, withTheme, type ThemePreset } from '../lib/themes';
 import { LayoutsMenu } from './LayoutsMenu';
 import { formatDateTime } from '../lib/timezone';
@@ -20,7 +20,7 @@ import { LANGS, useLang } from '../lib/i18n-load';
 function Swatch(props: { name: string; label: string; fallback: string }) {
   const value = () => doc.theme[props.name] ?? props.fallback;
   return (
-    <label class="swatch">
+    <label class="swatch" classList={{ changed: !!doc.theme[props.name] }}>
       <input type="color" value={value()} onInput={(e) => setThemeValue(props.name, e.currentTarget.value)} />
       <span class="name">{tl(props.label)}</span>
       <span class="num dim">{value()}</span>
@@ -28,6 +28,7 @@ function Swatch(props: { name: string; label: string; fallback: string }) {
         <button
           class="dim"
           data-tip="Back to the default"
+          aria-label={tl('Back to the default')}
           onClick={(e) => {
             e.preventDefault();
             setThemeValue(props.name, null);
@@ -37,6 +38,37 @@ function Swatch(props: { name: string; label: string; fallback: string }) {
         </button>
       </Show>
     </label>
+  );
+}
+
+/** The chart's colours set out by what they colour, each group with a word on where it shows. */
+const CHART_GROUPS: readonly { group: ChartGroup; title: string; hint: string }[] = [
+  { group: 'canvas', title: 'Chart', hint: 'Behind and around the bars' },
+  { group: 'candles', title: 'Candles and line', hint: 'The bars themselves, and the line chart' },
+  { group: 'layers', title: 'Price layers', hint: 'The EMA 12/25 ribbon and the EMA 200' },
+  { group: 'tpo', title: 'TPO', hint: 'Profiles, where the chart draws them' },
+  { group: 'drawings', title: 'Drawings', hint: 'New drawings, and the one picked' },
+];
+
+/** The indicators' own colours, taken in turn as they are added: a row of six. */
+function Palette() {
+  const keys = CHART_THEME.filter((t) => t.group === 'studies');
+  return (
+    <div class="study-colors">
+      <For each={keys}>
+        {(t, i) => (
+          <label class="chip" classList={{ changed: !!doc.theme[t.name] }} style={{ background: doc.theme[t.name] ?? t.value }} data-tip={tl(t.label)}>
+            <input type="color" value={doc.theme[t.name] ?? t.value} onInput={(e) => setThemeValue(t.name, e.currentTarget.value)} />
+            <span>{i() + 1}</span>
+          </label>
+        )}
+      </For>
+      <Show when={keys.some((t) => doc.theme[t.name])}>
+        <button class="dim" data-tip="Back to the defaults" aria-label={tl('Back to the defaults')} onClick={() => keys.forEach((t) => setThemeValue(t.name, null))}>
+          ↺
+        </button>
+      </Show>
+    </div>
   );
 }
 
@@ -447,9 +479,23 @@ function ThemesSection() {
       <h3 class="set-sub">{current() ? tl('Fine-tune it') : tl('Your own colours')}</h3>
       <p class="lead">{tl('Any colour changed here makes the theme your own; ↺ puts one back to the default.')}</p>
       <div class="set-card">
-        <h3>{tl('Chart')}</h3>
-        <div class="swatches">
-          <For each={CHART_THEME}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>
+        <div class="color-groups">
+          <For each={CHART_GROUPS}>
+            {(g) => (
+              <section class="color-group">
+                <h4>{tl(g.title)}</h4>
+                <p>{tl(g.hint)}</p>
+                <div class="swatches one">
+                  <For each={CHART_THEME.filter((t) => t.group === g.group)}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>
+                </div>
+              </section>
+            )}
+          </For>
+          <section class="color-group">
+            <h4>{tl('Indicators')}</h4>
+            <p>{tl('Taken in turn as indicators are added; each one\'s own colour is in its settings')}</p>
+            <Palette />
+          </section>
         </div>
         <p class="lead">{tl('The size of the chart\'s text, and bold, are in General → Text.')}</p>
       </div>
