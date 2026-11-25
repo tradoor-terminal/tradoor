@@ -2402,6 +2402,36 @@ impl Chart {
         let plot_w = price.plot.w;
         let avail = self.time_axis_top();
 
+        // The time axis's labels, where they fall: a grid's upright lines stand on them too.
+        let tpo = self.tpo().is_some() && self.tpo_profiles.is_some();
+        let mut candidates = Vec::new();
+        for i in (i0..=i1).filter(|_| !tpo) {
+            let Some(b) = self.bar(i) else { continue };
+            let x = self.time.x(i as f64) as f32;
+            if (0.0..plot_w).contains(&x) {
+                let prev = i.checked_sub(1).and_then(|j| self.bar(j)).map(|pb| self.shown_time(pb.time));
+                let shown = self.shown_time(b.time);
+                candidates.push((ticks::boundary_weight(prev, shown), x, shown));
+            }
+        }
+        let time_marks = ticks::pick_time_labels(&candidates, self.char_width * 6.0 + 22.0);
+
+        // ---- the grid, under everything, where the chart asks for one: a line at each price and time label
+        let grid = self.styles.of("chart", "grid");
+        if grid.width.is_some() && !grid.off {
+            let color = grid.color.unwrap_or(t.border);
+            for pane in self.panes.iter().filter(|p| !p.over) {
+                f.clip(Some(pane.plot));
+                for v in ticks::price_ticks(&pane.scale, 30.0) {
+                    f.hline(0.0, plot_w, pane.scale.y(v) as f32, 1.0, color);
+                }
+            }
+            f.clip(None);
+            for (x, _) in &time_marks {
+                f.vline(*x, 0.0, avail, 1.0, color);
+            }
+        }
+
         // ---- guides under everything in the lower panes
         let guides = self.styles.of("pct", "guides");
         for pane in self.panes.iter().filter(|p| matches!(p.group, Group::Pct | Group::Stoch) && !guides.off) {
@@ -2415,7 +2445,6 @@ impl Chart {
         // ---- price pane: the ribbon under the candles, volume at the foot, and
         // the mark over the volume — the bars sit where it does and would bury it
         f.clip(Some(price.plot));
-        let tpo = self.tpo().is_some() && self.tpo_profiles.is_some();
         let foot = !tpo && self.footprint_drawn();
         let mut tpo_tags = Vec::new();
         if let (true, Some(profiles)) = (tpo, self.tpo_profiles.as_ref()) {
@@ -2891,7 +2920,6 @@ impl Chart {
             let w = text.len() as f32 * self.char_width + 12.0;
             (self.time.x(slot as f64) as f32, text, w)
         });
-        let mut candidates = Vec::new();
         // Under profiles, each one's day where it starts.
         if let (true, Some(profiles), Some(period)) = (tpo, self.tpo_profiles.as_ref(), self.tpo()) {
             let gap = self.char_width * 11.0;
@@ -2910,16 +2938,7 @@ impl Chart {
                 f.text(x, avail + TIME_AXIS_HEIGHT / 2.0, text, t.text, Align::Left, Baseline::Middle, font, None, Some(time_axis));
             }
         }
-        for i in (i0..=i1).filter(|_| !tpo) {
-            let Some(b) = self.bar(i) else { continue };
-            let x = self.time.x(i as f64) as f32;
-            if (0.0..plot_w).contains(&x) {
-                let prev = i.checked_sub(1).and_then(|j| self.bar(j)).map(|pb| self.shown_time(pb.time));
-                let shown = self.shown_time(b.time);
-                candidates.push((ticks::boundary_weight(prev, shown), x, shown));
-            }
-        }
-        for (x, label) in ticks::pick_time_labels(&candidates, self.char_width * 6.0 + 22.0) {
+        for (x, label) in time_marks {
             if cross_label.as_ref().is_some_and(|(cx, _, w)| (cx - x).abs() < w / 2.0 + self.char_width * 3.0) {
                 continue;
             }
@@ -4968,6 +4987,19 @@ mod tests {
             assert!((wide * dpr - dpr.floor().max(1.0)).abs() < 1e-6, "one CSS pixel on dpr {dpr}");
             assert!(body > 40.0 && body as i32 % 2 == 1);
         }
+    }
+
+    #[test]
+    fn a_grid_is_drawn_under_the_bars_only_when_asked_for() {
+        let mut c = chart();
+        let cyan = Color::hex(0x00ffff);
+        let lines = |c: &mut Chart| c.render(1_800_000_000_000).colors.chunks(4).filter(|v| v[..3] == [cyan.r, cyan.g, cyan.b]).count();
+        assert_eq!(lines(&mut c), 0, "none by default");
+        c.set_styles("chart/grid=#00ffff,1");
+        let on = lines(&mut c);
+        assert!(on >= 4 * 12, "a line at each price and time label: {on} vertices");
+        c.set_styles("chart/grid=#00ffff,1,1");
+        assert_eq!(lines(&mut c), 0, "switched off");
     }
 
     #[test]

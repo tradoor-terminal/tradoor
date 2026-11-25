@@ -101,6 +101,23 @@ function CandleColours() {
   );
 }
 
+/** The chart's grid, kept with the theme: on (`1`) or off, the default, and its colour. */
+const GRID = { on: 'grid', color: 'gridColor' } as const;
+
+/** The grid behind the chart: off unless ticked, in the grid and borders' colour unless given its own. */
+function GridColour() {
+  const on = () => doc.theme[GRID.on] === '1';
+  return (
+    <div class="candle-part" classList={{ off: !on() }}>
+      <label class="check">
+        <input type="checkbox" checked={on()} onChange={() => setThemeValue(GRID.on, on() ? null : '1')} />
+        {tl('Grid lines')}
+      </label>
+      <ChipSwatch name={GRID.color} fallback={() => doc.theme.border ?? CHART_THEME.find((t) => t.name === 'border')!.value} tip="Grid colour" />
+    </div>
+  );
+}
+
 /** The indicators' own colours, taken in turn as they are added: a row of six. */
 function Palette() {
   const keys = CHART_THEME.filter((t) => t.group === 'studies');
@@ -536,6 +553,9 @@ function ThemesSection() {
               <section class="color-group">
                 <h4>{tl(g.title)}</h4>
                 <p>{tl(g.hint)}</p>
+                <Show when={g.group === 'canvas'}>
+                  <GridColour />
+                </Show>
                 <div class="swatches one">
                   <For each={CHART_THEME.filter((t) => t.group === g.group)}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>
                 </div>

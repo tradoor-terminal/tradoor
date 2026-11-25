@@ -43,7 +43,7 @@ export const CHART_THEME: readonly (ThemeKey & { group: ChartGroup })[] = [
  */
 export const CANDLE_PARTS = { body: 'candleBody', border: 'candleBorder', wick: 'candleWick', previous: 'candlePrev' } as const;
 
-/** The style entries the engine draws the candles' parts from (`price/…`): none where all are as they always were. */
+/** The style entries the engine draws the candles' parts and the grid from (`price/…`, `chart/grid`): none where all are as they always were. */
 export function candleStyles(theme: Record<string, string | undefined>): string {
   const on = (key: string, fallback: string) => (theme[key] ?? fallback) === '1';
   const out: string[] = [];
@@ -52,6 +52,8 @@ export function candleStyles(theme: Record<string, string | undefined>): string 
   else if (theme.wickUp || theme.wickDown) out.push(`price/wickUp=${theme.wickUp ?? ''},1`, `price/wickDown=${theme.wickDown ?? ''},1`);
   if (on(CANDLE_PARTS.border, '0')) out.push(`price/borderUp=${theme.borderUp ?? ''},1`, `price/borderDown=${theme.borderDown ?? ''},1`);
   if (on(CANDLE_PARTS.previous, '0')) out.push('price/prev=1');
+  // The grid: off unless `grid` is 1, in `gridColor` or the grid and borders' own.
+  if (theme.grid === '1') out.push(`chart/grid=${theme.gridColor ?? ''},1`);
   return out.join(';');
 }
 

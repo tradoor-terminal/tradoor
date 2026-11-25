@@ -10,3 +10,9 @@ Deno.test('the candles as they always were send nothing; each part changed sends
   assertEquals(candleStyles({ candleBorder: '1' }), 'price/borderUp=,1;price/borderDown=,1', 'borders in the body’s colours');
   assertEquals(candleStyles({ candleBorder: '1', borderUp: '#0000ff', candlePrev: '1' }), 'price/borderUp=#0000ff,1;price/borderDown=,1;price/prev=1');
 });
+
+Deno.test('the grid is off unless switched on, in the grid and borders’ colour unless given one', () => {
+  assertEquals(candleStyles({ gridColor: '#ff0000' }), '');
+  assertEquals(candleStyles({ grid: '1' }), 'chart/grid=,1');
+  assertEquals(candleStyles({ grid: '1', gridColor: '#334433' }), 'chart/grid=#334433,1');
+});

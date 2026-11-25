@@ -25,7 +25,7 @@
     {
       "name": "engine wasm",
       "path": "dist/assets/tradoor_wasm_bg-*.wasm",
-      "limit": "157 kB",
+      "limit": "158 kB",
       "gzip": true
     },
     {
