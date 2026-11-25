@@ -10,7 +10,6 @@ import bb from '../../../crates/frost-script/sources/bb.frost?raw';
 import cvd from '../../../crates/frost-script/sources/cvd.frost?raw';
 import ema from '../../../crates/frost-script/sources/ema.frost?raw';
 import cvdaggregated from '../../../crates/frost-script/sources/cvdaggregated.frost?raw';
-import ema200 from '../../../crates/frost-script/sources/ema200.frost?raw';
 import ichimoku from '../../../crates/frost-script/sources/ichimoku.frost?raw';
 import keltner from '../../../crates/frost-script/sources/keltner.frost?raw';
 import keylevels from '../../../crates/frost-script/sources/keylevels.frost?raw';
@@ -31,7 +30,6 @@ import vwap from '../../../crates/frost-script/sources/vwap.frost?raw';
 /** The built-in indicators' workings, by study kind or layer, as scripts: what their Source tab shows. */
 export const SOURCES: Record<string, { name: string; source: string }> = {
   ribbon: { name: 'EMA 12/25 Ribbon', source: ribbon },
-  ema200: { name: 'EMA 200', source: ema200 },
   volume: { name: 'Volume', source: volume },
   sma: { name: 'Simple Moving Average', source: sma },
   ema: { name: 'Exponential Moving Average', source: ema },

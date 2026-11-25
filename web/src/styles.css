@@ -450,10 +450,20 @@ input.box:focus { border-color: var(--primary); outline: 0; }
 .color-group p { margin: 2px 0 8px; color: var(--dim); font-size: .625rem; line-height: 1.4; }
 .color-group .swatches { gap: 2px; }
 .study-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.study-colors .chip { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--border); cursor: pointer; }
-.study-colors .chip input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
-.study-colors .chip span { pointer-events: none; color: #000c; font-size: .625rem; font-weight: 700; }
-.study-colors .chip.changed { outline: 1px solid var(--muted); outline-offset: 1px; }
+.chip-swatch { position: relative; display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 1px solid var(--border); cursor: pointer; }
+.chip-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.chip-swatch span { pointer-events: none; color: #000c; font-size: .625rem; font-weight: 700; }
+.chip-swatch.changed { outline: 1px solid var(--muted); outline-offset: 1px; }
+.candle-part .check, .candle-check { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: .6875rem; cursor: pointer; }
+.candle-part { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+.candle-part .check { flex: 1; min-width: 0; }
+.candle-part.off .chip-swatch { opacity: .35; }
+.candle-check { margin: 0 0 10px; }
+.candle-reset { display: block; margin: 2px 0 6px; font-size: .625rem; }
+.color-group .swatch { min-width: 0; }
+.color-group .swatch .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.color-group .swatch .num { flex: none; }
+.color-group .swatch button { flex: none; }
 
 /* ------------------------------------------------------------ panels */
 .panelcol { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }

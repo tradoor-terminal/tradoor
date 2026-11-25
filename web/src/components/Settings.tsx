@@ -5,7 +5,7 @@ import { OWNER_PATTERN, ownerId, session, switchOwner } from '../lib/owner';
 import { ALL_EXCHANGES, ExchangeLogo } from '../lib/exchanges';
 import { Icon, type IconName } from '../lib/icons';
 import { deviceZone, LOCAL_ZONE, offsetLabel, offsetMinutes, TIME_ZONE_KEY, timeZone } from '../lib/timezone';
-import { CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME, type ChartGroup } from '../lib/theme';
+import { CANDLE_PARTS, CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME, type ChartGroup } from '../lib/theme';
 import { THEMES, themeOf, withTheme, type ThemePreset } from '../lib/themes';
 import { LayoutsMenu } from './LayoutsMenu';
 import { formatDateTime } from '../lib/timezone';
@@ -44,11 +44,62 @@ function Swatch(props: { name: string; label: string; fallback: string }) {
 /** The chart's colours set out by what they colour, each group with a word on where it shows. */
 const CHART_GROUPS: readonly { group: ChartGroup; title: string; hint: string }[] = [
   { group: 'canvas', title: 'Chart', hint: 'Behind and around the bars' },
-  { group: 'candles', title: 'Candles and line', hint: 'The bars themselves, and the line chart' },
-  { group: 'layers', title: 'Price layers', hint: 'The EMA 12/25 ribbon and the EMA 200' },
   { group: 'tpo', title: 'TPO', hint: 'Profiles, where the chart draws them' },
   { group: 'drawings', title: 'Drawings', hint: 'New drawings, and the one picked' },
 ];
+
+/** A colour as a small square to click, `fallback` where none is set. */
+function ChipSwatch(props: { name: string; fallback: () => string; tip: string }) {
+  return (
+    <label class="chip-swatch" classList={{ changed: !!doc.theme[props.name] }} style={{ background: doc.theme[props.name] ?? props.fallback() }} data-tip={tl(props.tip)}>
+      <input type="color" value={doc.theme[props.name] ?? props.fallback()} onInput={(e) => setThemeValue(props.name, e.currentTarget.value)} />
+    </label>
+  );
+}
+
+/**
+ * The candles: their body, borders and wicks, each on or off with an up and a down colour,
+ * the borders and wicks taking the body's until set; and up against the close before, if asked.
+ */
+function CandleColours() {
+  const theme = (name: string) => doc.theme[name] ?? CHART_THEME.find((t) => t.name === name)?.value ?? '#000000';
+  const on = (key: string, fallback: string) => (doc.theme[key] ?? fallback) === '1';
+  const flip = (key: string, fallback: string) => setThemeValue(key, on(key, fallback) ? '0' : '1');
+  const parts = [
+    { key: CANDLE_PARTS.body, fallback: '1', label: 'Body', up: 'bull', down: 'bear' },
+    { key: CANDLE_PARTS.border, fallback: '0', label: 'Borders', up: 'borderUp', down: 'borderDown' },
+    { key: CANDLE_PARTS.wick, fallback: '1', label: 'Wick', up: 'wickUp', down: 'wickDown' },
+  ];
+  const changed = () => [...parts.flatMap((p) => [p.key, p.up, p.down]), CANDLE_PARTS.previous].some((k) => doc.theme[k] !== undefined);
+  return (
+    <>
+      <label class="check candle-check">
+        <input type="checkbox" checked={on(CANDLE_PARTS.previous, '0')} onChange={() => flip(CANDLE_PARTS.previous, '0')} />
+        {tl('Colour bars by the close before them')}
+      </label>
+      <For each={parts}>
+        {(p) => (
+          <div class="candle-part" classList={{ off: !on(p.key, p.fallback) }}>
+            <label class="check">
+              <input type="checkbox" checked={on(p.key, p.fallback)} onChange={() => flip(p.key, p.fallback)} />
+              {tl(p.label)}
+            </label>
+            <ChipSwatch name={p.up} fallback={() => theme('bull')} tip="Up" />
+            <ChipSwatch name={p.down} fallback={() => theme('bear')} tip="Down" />
+          </div>
+        )}
+      </For>
+      <Show when={changed()}>
+        <button class="dim candle-reset" onClick={() => [...parts.flatMap((p) => [p.key, p.up, p.down]), CANDLE_PARTS.previous].forEach((k) => setThemeValue(k, null))}>
+          ↺ {tl('Back to the defaults')}
+        </button>
+      </Show>
+      <div class="swatches one">
+        <Swatch name="line" label="Line chart" fallback={theme('line')} />
+      </div>
+    </>
+  );
+}
 
 /** The indicators' own colours, taken in turn as they are added: a row of six. */
 function Palette() {
@@ -57,7 +108,7 @@ function Palette() {
     <div class="study-colors">
       <For each={keys}>
         {(t, i) => (
-          <label class="chip" classList={{ changed: !!doc.theme[t.name] }} style={{ background: doc.theme[t.name] ?? t.value }} data-tip={tl(t.label)}>
+          <label class="chip-swatch" classList={{ changed: !!doc.theme[t.name] }} style={{ background: doc.theme[t.name] ?? t.value }} data-tip={tl(t.label)}>
             <input type="color" value={doc.theme[t.name] ?? t.value} onInput={(e) => setThemeValue(t.name, e.currentTarget.value)} />
             <span>{i() + 1}</span>
           </label>
@@ -491,6 +542,11 @@ function ThemesSection() {
               </section>
             )}
           </For>
+          <section class="color-group">
+            <h4>{tl('Candles and line')}</h4>
+            <p>{tl('Each part on or off, up and down')}</p>
+            <CandleColours />
+          </section>
           <section class="color-group">
             <h4>{tl('Indicators')}</h4>
             <p>{tl('Taken in turn as indicators are added; each one\'s own colour is in its settings')}</p>

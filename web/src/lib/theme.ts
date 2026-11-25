@@ -36,6 +36,25 @@ export const CHART_THEME: readonly (ThemeKey & { group: ChartGroup })[] = [
   { name: 'study5', label: 'Indicator 6', value: '#9ae66e', group: 'studies' },
 ];
 
+/**
+ * The candles' parts, kept with the theme: each part on or off (`1`, `0`), and the
+ * borders' and wicks' own colours, the body's where none is set. The page sends them
+ * with the chart's styles (ChartPanel), as the engine's theme has no slots for them.
+ */
+export const CANDLE_PARTS = { body: 'candleBody', border: 'candleBorder', wick: 'candleWick', previous: 'candlePrev' } as const;
+
+/** The style entries the engine draws the candles' parts from (`price/…`): none where all are as they always were. */
+export function candleStyles(theme: Record<string, string | undefined>): string {
+  const on = (key: string, fallback: string) => (theme[key] ?? fallback) === '1';
+  const out: string[] = [];
+  if (!on(CANDLE_PARTS.body, '1')) out.push('price/body=,1,1');
+  if (!on(CANDLE_PARTS.wick, '1')) out.push('price/wickUp=,1,1');
+  else if (theme.wickUp || theme.wickDown) out.push(`price/wickUp=${theme.wickUp ?? ''},1`, `price/wickDown=${theme.wickDown ?? ''},1`);
+  if (on(CANDLE_PARTS.border, '0')) out.push(`price/borderUp=${theme.borderUp ?? ''},1`, `price/borderDown=${theme.borderDown ?? ''},1`);
+  if (on(CANDLE_PARTS.previous, '0')) out.push('price/prev=1');
+  return out.join(';');
+}
+
 export const FONT_PX = { name: 'fontPx', value: '11' };
 
 /** The page's text, as a share of its usual size: every size in the CSS is in rem, so one root size moves them all. */

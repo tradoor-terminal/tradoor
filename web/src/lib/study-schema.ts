@@ -107,17 +107,6 @@ export const LAYER_DEFS: readonly LayerDef[] = [
     ],
   },
   {
-    id: 'ema200',
-    name: 'Long EMA',
-    short: 'EMA 200',
-    category: 'Built in',
-    keywords: 'moving average ma trend',
-    about: 'One long average, with its value on the price axis.',
-    candles: true,
-    inputs: [{ key: 'length', label: 'Length', default: 200, min: 2, max: 1000 }],
-    plots: [{ key: 'line', label: 'Line', theme: 'ema200', width: 1, noToggle: true }],
-  },
-  {
     id: 'volume',
     name: 'Volume',
     short: 'Vol',

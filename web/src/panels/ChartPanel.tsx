@@ -30,6 +30,7 @@ import { decimalsOf, formatPrice, formatTurnover, MAX_PRICE_DECIMALS } from '../
 import type { LastPrice } from '../lib/last-price';
 import { Icon, type IconName } from '../lib/icons';
 import { readPref, writePref } from '../lib/prefs';
+import { candleStyles } from '../lib/theme';
 import { VenueTag } from '../lib/exchanges';
 import { WatchlistToggle } from '../components/WatchlistToggle';
 import { liquidationVenues } from '../lib/liquidation-venues';
@@ -129,7 +130,6 @@ const TOUCH_STEPS = 'Tap for the crosshair, slide anywhere to aim it, tap to pla
 
 const LAYERS = [
   { id: 'ribbon', label: 'EMA 12/25 ribbon', candles: true },
-  { id: 'ema200', label: 'EMA 200', candles: true },
   { id: 'volume', label: 'Volume', candles: true },
   { id: 'liquidations', label: 'Liquidations', candles: false },
 ];
@@ -939,9 +939,10 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   createEffect(() => send({ t: 'studies', id: sid, value: props.panel.studies }));
   // The reader's formulas on it, with their text: again when one is edited.
   createEffect(() => send({ t: 'formulas', id: sid, value: formulaRuns(props.panel.studies) }));
-  createEffect(() => send({ t: 'hidden', id: sid, value: props.panel.hidden }));
+  // The long EMA is no longer a layer: an EMA study of 200 draws it where it is wanted, so the engine's own stays off.
+  createEffect(() => send({ t: 'hidden', id: sid, value: `${props.panel.hidden},ema200` }));
   // The line chart rides with the styles: the engine draws the closes as a line where `price/line` has a width, in the theme's colour.
-  createEffect(() => send({ t: 'studyStyles', id: sid, value: serializeStyles(props.panel.studyStyles) + (lineOn() ? `;price/line=${doc.theme.line ?? '#2962ff'},2` : '') }));
+  createEffect(() => send({ t: 'studyStyles', id: sid, value: [serializeStyles(props.panel.studyStyles), lineOn() ? `price/line=${doc.theme.line ?? '#2962ff'},2` : '', candleStyles(doc.theme)].filter(Boolean).join(';') }));
   createEffect(() => send({ t: 'log', id: sid, value: props.panel.log }));
   createEffect(() => send({ t: 'tpo', id: sid, value: split() ?? '' }));
   createEffect(() => send({ t: 'tpoSettings', id: sid, value: serializeTpo(props.panel.tpoSettings) }));

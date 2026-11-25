@@ -2028,9 +2028,6 @@ impl Chart {
             // As TPO profiles and footprint columns do not draw the averages, the range
             // does not hold them either: an EMA 200 far off squeezed every row there was.
             let averages = self.tpo().is_none() && !self.footprint_drawn();
-            if averages && !self.hidden.contains("ema200") {
-                series(&self.engine.ema200, &mut take);
-            }
             if averages && !self.hidden.contains("ribbon") {
                 series(&self.engine.ema12, &mut take);
                 series(&self.engine.ema25, &mut take);
@@ -2468,6 +2465,12 @@ impl Chart {
         let line = self.styles.of("price", "line");
         let as_line = !tpo && !foot && line.width.is_some() && !line.off;
         let mut closes = Vec::new();
+        // The candles' parts as the chart's settings have them: a body, borders and wicks each with
+        // their up and down colours, any of them off; up against the bar before, where asked.
+        let part = |key: &str| self.styles.of("price", key);
+        let (body_style, wick_up, wick_down, border_up, border_down) = (part("body"), part("wickUp"), part("wickDown"), part("borderUp"), part("borderDown"));
+        let by_previous = self.styles.number("price", "prev", 0.0) == 1.0;
+        let bordered = border_up.width.is_some() && !border_up.off;
         // A bar past each edge too, so the line runs off the plot rather than stopping short of it.
         for i in (i0.saturating_sub(usize::from(as_line))..=i1 + usize::from(as_line)).filter(|_| !tpo && !foot) {
             let Some(b) = self.bar(i) else { continue };
@@ -2477,23 +2480,34 @@ impl Chart {
                 closes.push((x, s.y(b.close) as f32));
                 continue;
             }
-            let base = self.bar_rgba(i).unwrap_or(if b.close >= b.open { t.bull } else { t.bear });
-            let fill = base.with_alpha(if b.live { 0x80 } else { t.candle_alpha });
+            // The bar before a forming one is the newest closed: either way, a candle held.
+            let before = if by_previous { i.checked_sub(1).and_then(|j| self.candles.get(j)) } else { None };
+            let up = b.close >= before.map_or(b.open, |p| p.close);
+            let base = self.bar_rgba(i).unwrap_or(if up { t.bull } else { t.bear });
+            let alpha = if b.live { 0x80 } else { t.candle_alpha };
+            let fill = base.with_alpha(alpha);
+            let tone = |up_style: PlotStyle, down_style: PlotStyle| if up { up_style } else { down_style }.color.map_or(fill, |c| c.with_alpha(alpha));
+            let wick_color = tone(wick_up, wick_down);
             let (yh, yl, yo, yc) = (s.y(b.high) as f32, s.y(b.low) as f32, s.y(b.open) as f32, s.y(b.close) as f32);
             let (top, bottom) = (yo.min(yc), yo.max(yc));
             if body_dev < 2.0 {
                 f.vline(x, yh, yl, wick, fill);
                 continue;
             }
-            if top - yh > 0.0 {
-                f.vline(x, yh, top, wick, fill);
+            if !wick_up.off {
+                if top - yh > 0.0 {
+                    f.vline(x, yh, top, wick, wick_color);
+                }
+                if yl - bottom > 0.0 {
+                    f.vline(x, bottom, yl, wick, wick_color);
+                }
             }
-            if yl - bottom > 0.0 {
-                f.vline(x, bottom, yl, wick, fill);
+            let h = (bottom - top).max(1.0 / dpr);
+            if !body_style.off {
+                f.crisp_rect(x - body / 2.0, top, body, h, fill);
             }
-            f.crisp_rect(x - body / 2.0, top, body, (bottom - top).max(1.0 / dpr), fill);
-            if b.live {
-                f.stroke_rect(x - body / 2.0, top, body, (bottom - top).max(1.0 / dpr), 1.0 / dpr, base);
+            if bordered || b.live {
+                f.stroke_rect(x - body / 2.0, top, body, h, 1.0 / dpr, if bordered { tone(border_up, border_down) } else { base });
             }
         }
         f.polyline(&closes, line.width.unwrap_or(2.0), line.color.unwrap_or(Color::hex(0x2962ff)));
@@ -2527,10 +2541,7 @@ impl Chart {
                 f.hline(price.plot.x, price.plot.right(), top, 1.0, t.text.with_alpha(170));
             }
         }
-        if !tpo && !foot && !self.hidden.contains("ema200") {
-            let style = self.styles.of("ema200", "line");
-            self.paint_series(f, &price.scale, &self.engine.ema200, i0, i1, style.color.unwrap_or(t.ema200), style.width.unwrap_or(1.0), LineStyle::Solid, style.pattern.unwrap_or(Pattern::Solid));
-        }
+        // The long EMA is worked out still, for what reads it, but no longer drawn: an EMA study of 200 is.
 
         // ---- studies, each in its pane
         for (index, study) in self.visible_studies() {
@@ -2779,12 +2790,6 @@ impl Chart {
             badges.push(Badge { pane: 0, y: price.scale.y(a.price) as f32, text: format_price(a.price, Some(p)), bg, fg: bg.contrast_text(), mark: None });
         }
         let last_value = |values: &[Option<f64>]| values.iter().rev().flatten().next().copied();
-        if !self.hidden.contains("ema200") {
-            if let Some(v) = last_value(&self.engine.ema200) {
-                let color = self.styles.color("ema200", "line", t.ema200);
-                badges.push(Badge { pane: 0, y: price.scale.y(v) as f32, text: format_price(v, Some(p)), bg: color, fg: color.contrast_text(), mark: None });
-            }
-        }
         for (index, study) in self.visible_studies() {
             let Some(pane_index) = self.panes.iter().position(|pn| pn.group == self.pane_group(study)) else { continue };
             let pane = self.panes[pane_index];
@@ -4782,14 +4787,6 @@ mod tests {
         c.set_candles(candles(500));
         assert_eq!(c.engine.ema200, shorter, "and kept when the bars change");
 
-        let green = Color::hex(0x00ff00);
-        let painted_now = |c: &mut Chart, color: Color| {
-            let frame = c.render(1_800_000_000_000).clone();
-            frame.colors.chunks(4).filter(|p| *p == [color.r, color.g, color.b, color.a]).count()
-        };
-        c.set_styles("ema200/line=#00ff00,2,");
-        assert!(painted_now(&mut c, green) > 0);
-
         // Volume in its own colour and height.
         let blue = Color::hex(0x0000ff).with_alpha(0x80);
         let top_of_blue = |c: &mut Chart| {
@@ -4971,6 +4968,37 @@ mod tests {
             assert!((wide * dpr - dpr.floor().max(1.0)).abs() < 1e-6, "one CSS pixel on dpr {dpr}");
             assert!(body > 40.0 && body as i32 % 2 == 1);
         }
+    }
+
+    #[test]
+    fn candles_take_a_body_borders_and_wicks_each_with_colours_of_their_own() {
+        let mut c = chart();
+        c.set_studies("");
+        let has = |c: &mut Chart, color: Color| c.render(1_800_000_000_000).colors.chunks(4).any(|v| v[..3] == [color.r, color.g, color.b]);
+        let count = |c: &mut Chart| c.render(1_800_000_000_000).vertex_count();
+        let plain = count(&mut c);
+        let (wick, border) = (Color::hex(0x00ff00), Color::hex(0x0000ff));
+        assert!(!has(&mut c, wick) && !has(&mut c, border));
+        c.set_styles("price/wickUp=#00ff00,1;price/wickDown=#00ff00,1");
+        assert!(has(&mut c, wick), "wicks in their own colour");
+        c.set_styles("price/borderUp=#0000ff,1;price/borderDown=#0000ff,1");
+        assert!(has(&mut c, border) && count(&mut c) > plain, "borders round every body");
+        c.set_styles("price/body=,1,1");
+        assert!(count(&mut c) < plain, "no bodies");
+        // Against the bar before: one that opens above the last close and falls, but not below it, is up.
+        let mut d = Chart::new(ChartTimeframe::H1);
+        d.resize(400.0, 300.0, 1.0);
+        let bar = |i: i64, open: f64, close: f64| Candle { open_time: 1_700_000_000_000 + i * 3_600_000, open, high: open.max(close) + 1.0, low: open.min(close) - 1.0, close, volume: 1.0, quote_volume: None, taker_buy: None };
+        d.set_candles(vec![bar(0, 99.0, 100.0), bar(1, 110.0, 105.0)]);
+        d.set_studies("");
+        d.set_styles("price/body=,1,1");
+        let theme = Theme::default();
+        let bodies = |d: &mut Chart, color: Color| d.render(1_800_000_000_000).colors.chunks(4).filter(|v| v[..3] == [color.r, color.g, color.b]).count();
+        d.set_styles("");
+        let (up_own, down_own) = (bodies(&mut d, theme.bull), bodies(&mut d, theme.bear));
+        d.set_styles("price/prev=1");
+        let (up_prev, down_prev) = (bodies(&mut d, theme.bull), bodies(&mut d, theme.bear));
+        assert!(up_prev > up_own && down_prev < down_own, "the falling bar is up against the close before it");
     }
 
     #[test]

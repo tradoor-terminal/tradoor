@@ -46,7 +46,7 @@ async function addScript(id: string, target: ChartPanelState): Promise<void> {
 }
 
 /** The layers drawn on every chart, shown again rather than added. */
-const LAYERS: Record<string, string> = { ribbon: 'EMA 12/25 ribbon', ema200: 'EMA 200', volume: 'Volume' };
+const LAYERS: Record<string, string> = { ribbon: 'EMA 12/25 ribbon', volume: 'Volume' };
 
 /** One of tradoor's own indicators, from the showcase, on the chart with its usual settings. */
 async function addIndicator(kind: string, target: ChartPanelState): Promise<void> {
