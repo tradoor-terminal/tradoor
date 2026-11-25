@@ -78,6 +78,8 @@ export const kindOf = (f: Pick<Formula, 'id'>): string => `fx-${f.id}`;
 /** One of tradoor's own scripts (lib/formula-sources): an id with a dot is never one the server gives. */
 export const isBuiltIn = (id: string): boolean => id.startsWith('tradoor.');
 export const isFormulaKind = (kind: string): boolean => kind.startsWith('fx-');
+/** One of tradoor's own scripts (lib/formula-sources BUILT_IN): shown and starred as a built-in indicator, with no author's mark. */
+export const isOurs = (kind: string): boolean => isFormulaKind(kind) && kind.includes('.');
 
 // ---------------------------------------------------------------- the Community
 
@@ -159,7 +161,7 @@ export function formulaRuns(studies: string): FormulaRun[] {
       // One the moderator removed runs for no one, its author included.
       if (!f || f.removed) return [];
       // A shared script says whose it is, on every chart it is on.
-      const author = f.by ?? (f.public ? username() : null);
+      const author = isOurs(kind!) ? null : (f.by ?? (f.public ? username() : null));
       const numbers = numberSettings(f.source);
       const shown = params.filter((_, i) => numbers[i] ?? true);
       return [{ id, label: [f.name, ...shown].join(' ') + (author ? ` · @${author}` : ''), source: f.source, inputs: params.map(Number) }];

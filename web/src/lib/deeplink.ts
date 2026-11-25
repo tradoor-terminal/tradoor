@@ -39,7 +39,7 @@ async function addScript(id: string, target: ChartPanelState): Promise<void> {
       }
       patchPanel(target.id, { studies: [...studies, kind].join(',') });
     }
-    toast({ tone: 'info', title: `${s.name}, by @${s.username}`, body: id.includes('.') ? 'On the chart: one of tradoor’s own Frost Scripts, its source in its settings.' : 'On the chart, from the Community. Its source is in its settings: read it before you trade on it.' });
+    toast({ tone: 'info', title: id.includes('.') ? s.name : `${s.name}, by @${s.username}`, body: id.includes('.') ? 'On the chart: one of tradoor’s own Frost Scripts, its source in its settings.' : 'On the chart, from the Community. Its source is in its settings: read it before you trade on it.' });
   } catch (e) {
     toast({ tone: 'warn', title: 'Not added', body: (e as { status?: number }).status === 404 ? 'That script is no longer public.' : errorText(e) });
   }

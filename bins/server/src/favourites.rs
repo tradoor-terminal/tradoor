@@ -16,7 +16,8 @@ const MAX_PER_OWNER: i64 = 64;
 /// A study's kind or a layer's id. The server does not read the catalogue, so a
 /// star from a newer page is kept: an older one simply lists nothing for it.
 fn valid_kind(kind: &str) -> bool {
-    !kind.is_empty() && kind.len() <= 40 && kind.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    // A dot as in tradoor's own scripts (`fx-tradoor.obv`), never two together, so no `..` either.
+    !kind.is_empty() && kind.len() <= 40 && !kind.contains("..") && kind.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
 }
 
 fn account(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
@@ -65,7 +66,9 @@ mod tests {
         assert!(super::valid_kind("script-3f2a_1"));
         assert!(!super::valid_kind(""));
         assert!(!super::valid_kind("ema:50"), "a kind, not one study's parameters");
+        assert!(super::valid_kind("fx-tradoor.cvdaggregated"), "tradoor's own scripts are starred like the indicators");
         assert!(!super::valid_kind("../x"));
+        assert!(!super::valid_kind("fx-a..b"));
         assert!(!super::valid_kind(&"a".repeat(41)));
     }
 }

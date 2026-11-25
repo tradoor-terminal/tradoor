@@ -12,7 +12,7 @@ import { setOverlay, setStudyEditing } from '../app/ui';
 import { studyCatalog } from '../engine/client';
 import { api, errorText } from '../lib/api';
 import { favourites, loadFavourites, toggleFavourite } from '../lib/favourites';
-import { community, communityError, formulaDefinition, formulas, isFormulaKind, kindOf, loadCommunity, setEditing } from '../lib/formulas';
+import { community, communityError, formulaDefinition, formulas, isFormulaKind, isOurs, kindOf, loadCommunity, setEditing } from '../lib/formulas';
 import { Icon } from '../lib/icons';
 import { session } from '../lib/owner';
 import { readPref, writePref } from '../lib/prefs';
@@ -61,8 +61,8 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
   const hidden = () => splitList(props.panel.hidden);
   const removed = () => splitList(props.panel.removed);
   const on = (kind: string) => active().filter((id) => id.split(':')[0] === kind);
-  /** tradoor's own scripts, listed with the indicators they sit beside. */
-  const ours = Object.entries(BUILT_IN).map(([id, b]): Listed => ({ id: `fx-${id}`, name: b.name, short: b.name, category: 'Flow and positioning', keywords: b.keywords, about: b.about, where: '', def: { kind: `fx-${id}`, short: b.name, group: 'formula', params: [] }, by: 'tradoor' }));
+  /** tradoor's own scripts, listed and starred as the indicators they sit beside: no author's mark, nothing to copy. */
+  const ours = Object.entries(BUILT_IN).map(([id, b]): Listed => ({ id: `fx-${id}`, name: b.name, short: b.name, category: 'Flow and positioning', keywords: b.keywords, about: b.about, where: b.where, def: { kind: `fx-${id}`, short: b.name, group: 'formula', params: [] } }));
   const builtins = createMemo(() => [...(defs.state === 'ready' ? entries(defs()!) : []).filter((e) => !(props.panel.tpo && e.layer?.candles)), ...(defs.state === 'ready' ? ours : [])]);
   /** The reader's own scripts: added as any indicator is, with the settings they write. */
   const mine = createMemo(() =>
@@ -197,8 +197,8 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
       <div class="ind" classList={{ cur: cur() === p.index, on: shown() }} role="option" aria-selected={cur() === p.index} onPointerMove={() => setCur(p.index)} onPointerDown={() => setCur(p.index)} onClick={() => pick(e)}>
         <button
           class="star"
-          classList={{ on: starred(), none: isFormulaKind(e.id) }}
-          disabled={isFormulaKind(e.id)}
+          classList={{ on: starred(), none: isFormulaKind(e.id) && !isOurs(e.id) }}
+          disabled={isFormulaKind(e.id) && !isOurs(e.id)}
           aria-pressed={starred()}
           aria-label={starred() ? tlf('Take {0} out of your favourites', e.name) : tlf('Add {0} to your favourites', e.name)}
           data-tip={starred() ? 'In your favourites' : 'Add to your favourites'}

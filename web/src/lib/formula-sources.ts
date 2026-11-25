@@ -56,14 +56,16 @@ export const SOURCES: Record<string, { name: string; source: string }> = {
  * tradoor's own scripts the picker offers beside the built-in indicators, by id
  * (an id with a dot is never one the server gives): what the picker lists, and their text.
  */
-export const BUILT_IN: Record<string, { name: string; about: string; keywords: string }> = {
+export const BUILT_IN: Record<string, { name: string; about: string; keywords: string; where: string }> = {
   'tradoor.cvdaggregated': {
     name: 'CVD Aggregated',
+    where: 'under candles',
     about: 'One coin’s cumulative volume delta on each exchange you tick, a line each, and their total, under the candles or in its own pane: perpetuals, spot or both, in coins or dollars. A Frost Script: its source shows how to read any market with cvd("bybit-perp").',
     keywords: 'cvd cumulative volume delta exchanges aggregate aggregated combined multi exchange screener perp spot binance bybit okx coinbase frost script',
   },
   'tradoor.obv': {
     name: 'On-Balance Volume',
+    where: 'own pane',
     about: 'A bar’s volume added when it closes up and taken away when it closes down, kept as a running total, with an SMA or EMA of it: in coins or dollars. A Frost Script.',
     keywords: 'obv on balance volume flow accumulation distribution frost script',
   },

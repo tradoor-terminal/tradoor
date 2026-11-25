@@ -16,7 +16,7 @@ import { dropOwner, numberOf, plotStyle, replaceStudy, splitList, withNumber, wi
 import { CHART_THEME } from '../lib/theme';
 import type { ChartPanelState } from '../workspace/model';
 import { doc, patchPanel, update } from '../workspace/store';
-import { formulaDefinition, formulaLabels, formulaOf, isFormulaKind, setEditing } from '../lib/formulas';
+import { formulaDefinition, formulaLabels, formulaOf, isFormulaKind, isOurs, setEditing } from '../lib/formulas';
 import { SOURCES, UNWRITTEN } from '../lib/formula-sources';
 import { ColorField } from './ColorField';
 import { NumField } from './NumField';
@@ -419,8 +419,8 @@ export function StudySettings(props: { panel: ChartPanelState; target: string; m
           <Show when={showing() === 'source' && source()}>
             <p class="dnote">
               {(() => {
-                const by = formula ? formulaOf(kind)?.by : undefined;
-                return by ? `@${by}'s script from the Community, as it is written. Read it before you trade on it; open a copy to make one of your own.` : formula ? 'Your script, as it is written.' : 'How tradoor works it out, written in Frost Script with its usual settings. Open a copy to make a script of your own.';
+                const by = formula && !isOurs(kind) ? formulaOf(kind)?.by : undefined;
+                return by ? `@${by}'s script from the Community, as it is written. Read it before you trade on it; open a copy to make one of your own.` : formula && !isOurs(kind) ? 'Your script, as it is written.' : 'How tradoor works it out, written in Frost Script with its usual settings. Open a copy to make a script of your own.';
               })()}
             </p>
             <Show when={formula ? formulaOf(kind)?.about : undefined}>{(a) => <p class="fx-described">{a()}</p>}</Show>
