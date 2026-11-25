@@ -704,7 +704,7 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
 }
 
 /// `v` as a text: a whole number bare, else up to eight decimals with no zeros left over.
-fn plain(v: f64) -> String {
+pub(crate) fn plain(v: f64) -> String {
     if v.is_nan() {
         return "NaN".to_string();
     }

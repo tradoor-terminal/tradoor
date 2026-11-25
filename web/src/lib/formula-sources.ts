@@ -16,6 +16,7 @@ import keltner from '../../../crates/frost-script/sources/keltner.frost?raw';
 import keylevels from '../../../crates/frost-script/sources/keylevels.frost?raw';
 import macd from '../../../crates/frost-script/sources/macd.frost?raw';
 import moon from '../../../crates/frost-script/sources/moon.frost?raw';
+import obv from '../../../crates/frost-script/sources/obv.frost?raw';
 import ribbon from '../../../crates/frost-script/sources/ribbon.frost?raw';
 import rsi from '../../../crates/frost-script/sources/rsi.frost?raw';
 import sessions from '../../../crates/frost-script/sources/sessions.frost?raw';
@@ -61,9 +62,14 @@ export const BUILT_IN: Record<string, { name: string; about: string; keywords: s
     about: 'One coin’s cumulative volume delta on each exchange you tick, a line each, and their total, under the candles or in its own pane: perpetuals, spot or both, in coins or dollars. A Frost Script: its source shows how to read any market with cvd("bybit-perp").',
     keywords: 'cvd cumulative volume delta exchanges aggregate aggregated combined multi exchange screener perp spot binance bybit okx coinbase frost script',
   },
+  'tradoor.obv': {
+    name: 'On-Balance Volume',
+    about: 'A bar’s volume added when it closes up and taken away when it closes down, kept as a running total, with an SMA or EMA of it: in coins or dollars. A Frost Script.',
+    keywords: 'obv on balance volume flow accumulation distribution frost script',
+  },
 };
 
-export const SCRIPTS: Record<string, string> = { 'tradoor.cvdaggregated': cvdaggregated };
+export const SCRIPTS: Record<string, string> = { 'tradoor.cvdaggregated': cvdaggregated, 'tradoor.obv': obv };
 
 /** One of them, as the Community gives a script; not found, as it says so. */
 export function builtIn(id: string): CommunityScript & { source: string } {
@@ -82,7 +88,7 @@ export const UNWRITTEN: Record<string, string> = {
 };
 
 /** To start from in the editor: the built-ins, and one that is not. */
-export const EXAMPLES: { name: string; source: string }[] = [{ name: 'SuperTrend', source: supertrend }, ...Object.values(SOURCES), { name: 'CVD Aggregated', source: cvdaggregated }];
+export const EXAMPLES: { name: string; source: string }[] = [{ name: 'SuperTrend', source: supertrend }, ...Object.values(SOURCES), { name: 'CVD Aggregated', source: cvdaggregated }, { name: 'On-Balance Volume', source: obv }];
 
 export const NEW_FORMULA = `// My indicator
 // Lines that start with // are notes. Each line below is worked out on every bar.

@@ -2073,9 +2073,20 @@ impl<'a> Compiler<'a> {
     }
 }
 
+/// A number the same on every bar, written as a text once: `str(length)` of a setting.
+fn settled(t: Tx) -> Tx {
+    match t {
+        Tx::Num(e, Fmt::Plain) => match constant(&e) {
+            Some(v) => Tx::Lit(Rc::from(crate::run::plain(v))),
+            None => Tx::Num(e, Fmt::Plain),
+        },
+        t => t,
+    }
+}
+
 /// Two texts as one; two fixed ones as one fixed text, so a market's name built from settings is looked up once.
 fn join(a: Tx, b: Tx) -> Tx {
-    match (a, b) {
+    match (settled(a), settled(b)) {
         (Tx::Lit(x), Tx::Lit(y)) => Tx::Lit(Rc::from(format!("{x}{y}"))),
         (Tx::Join(mut parts), b) => {
             if let (Some(Tx::Lit(x)), Tx::Lit(y)) = (parts.last(), &b) {

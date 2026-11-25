@@ -1,0 +1,16 @@
+// On-Balance Volume
+// A bar's volume added when it closes higher than the bar before, taken away
+// when it closes lower, kept as a running total: OBV rising while the price
+// stalls says volume is following the buyers. With an average of it to read its
+// trend against, counted in coins or in dollars.
+pane own
+input average = "None" from "None", "SMA", "EMA" "Average"
+input length = 20 min 2 max 1000 "Average length"
+input unit = "Coin" from "Coin", "USD" "Counted in"
+
+obv = cum(sign(change(close)) * (unit == "USD" ? volume * close : volume))
+smoothed = average == "SMA" ? sma(obv, length) : average == "EMA" ? ema(obv, length) : na
+
+title("OBV" + (average == "None" ? "" : " · " + average + " " + str(length)) + (unit == "USD" ? " · USD" : ""))
+plot(obv, "OBV", blue)
+plot(smoothed, "Average", orange)

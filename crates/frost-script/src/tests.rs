@@ -76,6 +76,7 @@ fn source(name: &str) -> &'static str {
         "cvd" => include_str!("../sources/cvd.frost"),
         "volumedelta" => include_str!("../sources/volumedelta.frost"),
         "cvdaggregated" => include_str!("../sources/cvdaggregated.frost"),
+        "obv" => include_str!("../sources/obv.frost"),
         _ => panic!("no source {name}"),
     }
 }
@@ -643,4 +644,38 @@ fn a_title_names_the_script_in_the_legend_from_its_settings() {
     assert_eq!(check("plot(close, \"C\")").unwrap().title, None, "a script without one keeps its name");
     fails("title(\"Close \" + str(close))\nplot(close, \"C\")", 1, "the same on every bar");
     fails("title(\"A\")\ntitle(\"B\")\nplot(close, \"C\")", 2, "once a script");
+}
+
+#[test]
+fn obv_adds_the_volume_of_a_bar_that_closes_up_and_takes_away_one_that_closes_down() {
+    let c = &candles()[..400];
+    // By hand: the first bar has none before it, a close the same as the last adds nothing.
+    let mut total = 0.0;
+    let want: Vec<f64> = c
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            if i > 0 {
+                let prev = c[i - 1].close;
+                total += if k.close > prev { k.volume } else if k.close < prev { -k.volume } else { 0.0 };
+            }
+            total
+        })
+        .collect();
+    let out = run_with_buyers(source("obv"), &[], c);
+    let got = line(&out, "OBV");
+    assert!(got.iter().zip(&want).all(|(g, w)| (g - w).abs() < 1e-6 * w.abs().max(1.0)), "the running total, bar by bar");
+    assert!(line(&out, "Average").iter().all(|v| v.is_nan()), "no average unless asked");
+    assert_eq!(out.title.as_deref(), Some("OBV"));
+
+    let ema = run_with_buyers(source("obv"), &[2.0, 10.0], c);
+    let study = indicators::ema(&got.iter().map(|v| Some(*v)).collect::<Vec<_>>(), 10);
+    assert!((line(&ema, "Average")[399] - study[399].unwrap()).abs() < 1e-6 * study[399].unwrap().abs().max(1.0), "an EMA of it");
+    assert_eq!(ema.title.as_deref(), Some("OBV · EMA 10"));
+
+    let usd = run_with_buyers(source("obv"), &[1.0, 20.0, 1.0], c);
+    let up = (1..400).find(|i| c[*i].close > c[i - 1].close).unwrap();
+    let step = line(&usd, "OBV")[up] - line(&usd, "OBV")[up - 1];
+    assert!((step - c[up].volume * c[up].close).abs() < 1e-6 * step.abs(), "in dollars, each bar's volume at its close");
+    assert_eq!(usd.title.as_deref(), Some("OBV · SMA 20 · USD"));
 }
