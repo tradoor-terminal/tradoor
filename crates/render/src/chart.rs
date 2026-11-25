@@ -2813,10 +2813,13 @@ impl Chart {
         let crosshair_price = hover.and_then(|(_, cy)| self.pane_at(cy).map(|i| (i, cy)));
 
         // ---- price tick labels, skipping any a badge sits on
-        // An overlay's scale is read off its badges: ticks would sit among the candle pane's.
+        // An overlay's scale is read off its badges: ticks would sit among the candle pane's,
+        // and the candle pane's are not written where an overlay lies, which holds no candles.
+        let overlaid = self.panes.iter().filter(|p| p.over).map(|p| p.plot.y).fold(f32::INFINITY, f32::min);
         for (pi, pane) in self.panes.iter().enumerate().filter(|(_, p)| !p.over) {
             let axis = Rect { x: plot_w, y: pane.plot.y, w: self.axis_width, h: pane.plot.h };
-            let ticks = ticks::price_ticks(&pane.scale, 44.0);
+            // A label every 30 to 60 pixels, as dense as the badges between them allow.
+            let ticks = ticks::price_ticks(&pane.scale, 30.0);
             let decimals = match pane.group {
                 Group::Price => p,
                 Group::Pct | Group::Stoch => 2,
@@ -2827,7 +2830,7 @@ impl Chart {
                 let y = pane.scale.y(v) as f32;
                 let near_badge = badges.iter().any(|b| b.pane == pi && (b.y - y).abs() < badge_h);
                 let near_cross = crosshair_price.is_some_and(|(i, cy)| i == pi && (cy - y).abs() < badge_h);
-                if y < pane.plot.y + 6.0 || y > pane.plot.bottom() - 6.0 || near_badge || near_cross {
+                if y < pane.plot.y + 6.0 || y > pane.plot.bottom() - 6.0 || (pi == 0 && y > overlaid - 6.0) || near_badge || near_cross {
                     continue;
                 }
                 f.text(plot_w + 6.0, y, label(v), t.text, Align::Left, Baseline::Middle, font, None, Some(axis));
@@ -5145,6 +5148,32 @@ mod tests {
         let list = &line[line.find("= [").map(|i| i + 3).unwrap_or(0)..line.rfind(']').unwrap_or(0)];
         let names: Vec<&str> = list.split(',').map(|s| s.trim().trim_matches('\'')).collect();
         assert_eq!(names, MARK_NAMES);
+    }
+
+    #[test]
+    fn the_price_axis_has_a_label_every_thirty_to_sixty_pixels_and_none_on_an_overlay() {
+        let mut c = chart();
+        let labels = |c: &mut Chart| {
+            let plot_w = c.plot_width();
+            let price = c.panes[0].plot;
+            let frame = c.render(1_800_000_000_000);
+            // Tick labels are in the theme's text colour; a badge's, in one that reads on its box.
+            let text = Theme::default().text;
+            let mut ys: Vec<f32> = frame.texts.iter().filter(|t| (t.x - (plot_w + 6.0)).abs() < 0.5 && t.color == text && t.y < price.bottom()).map(|t| t.y).collect();
+            ys.sort_by(f32::total_cmp);
+            ys
+        };
+        let ys = labels(&mut c);
+        assert!(ys.len() >= 8, "{ys:?}");
+        let gaps: Vec<f32> = ys.windows(2).map(|w| w[1] - w[0]).collect();
+        assert!(gaps.iter().all(|g| *g >= 29.0), "{gaps:?}");
+        assert!(gaps.iter().filter(|g| **g > 61.0).count() <= 2, "only where a badge took one out: {gaps:?}");
+        let n = c.candles().len();
+        let values: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        c.set_formula("fx-a", "Perp", "pane\t1\noverlay\t30\t5\nplot\tline\t-\t15\t0\t0\t0\tBybit\n", &values, false);
+        c.render(1_800_000_000_000);
+        let band = c.panes.iter().find(|p| p.over).copied().expect("the overlay");
+        assert!(labels(&mut c).iter().all(|y| *y < band.plot.y), "no price written beside the overlay");
     }
 
     #[test]
