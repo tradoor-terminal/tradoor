@@ -39,7 +39,7 @@ fn test(src: &str, rows: &[(f64, f64, f64, f64)], s: Settings) -> Report {
 
 fn test_with(src: &str, rows: &[(f64, f64, f64, f64)], s: Settings, inner: Inner, funding: Funding) -> Report {
     let c = cols(rows);
-    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[] };
+    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[], others: &[] };
     match backtest(src, &[], &bars, 2, s, inner, funding) {
         Ok((_, r)) => r,
         Err(e) => panic!("{e}"),
@@ -355,7 +355,7 @@ fn the_furthest_against_and_for() {
 #[test]
 fn a_strategy_needs_an_entry() {
     let c = cols(&flat(5));
-    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[] };
+    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[], others: &[] };
     let none = backtest("exit(true)", &[], &bars, 2, plain(), Inner::default(), Funding::default());
     assert!(none.is_err_and(|e| e.message.contains("long(condition)")));
 }
@@ -402,7 +402,7 @@ fn a_closed_position_takes_its_stop_with_it() {
 #[test]
 fn an_indicator_run_reads_no_position() {
     let c = cols(&flat(5));
-    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[] };
+    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[], others: &[] };
     let out = run("plot(inlong + inshort, \"A\")\nlong(close > 0)", &[], &bars, 2).unwrap();
     assert!(out.plots[0].values.iter().all(|v| *v == 0.0));
     let d = describe("long(close > 0)").unwrap();
@@ -432,7 +432,7 @@ fn the_order_waiting_for_the_next_open_is_said() {
 #[test]
 fn a_label_s_place_and_size_kept_in_variables_and_settings() {
     let c = cols(&flat(5));
-    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[] };
+    let bars = Bars { time: &c.time, open: &c.open, high: &c.high, low: &c.low, close: &c.close, volume: &c.volume, buy: &[], others: &[] };
     // As converted scripts write them: the place worked out into a name, the size a choice setting.
     let src = "input size = \"large\" from \"tiny\", \"small\", \"normal\", \"large\"\nwhere = close > open ? above : below\nif islast {\n  l = label(bar, close, \"x\", place = where, size = size)\n}";
     let out = run(src, &[], &bars, 2).unwrap();

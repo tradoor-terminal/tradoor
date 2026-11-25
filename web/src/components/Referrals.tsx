@@ -145,16 +145,27 @@ export function ReferralDialog(props: { onClose(): void }) {
 
 export function ReferralCard() {
   return (
-    <aside class="ref-card" aria-label={tl('Exchange sign-ups')}>
+    <aside class="ref-card" aria-label={tl('Support tradoor')}>
       <header>
         <span class="eyebrow">
-          <Icon name="gift" size={12} /> {tl('Exchange sign-ups')}
+          <Icon name="gift" size={12} /> {tl('Support tradoor')}
         </span>
         <button class="x" aria-label={tl('Close')} onClick={dismissReferralCard}>
           <Icon name="close" size={10} stroke={2.4} />
         </button>
       </header>
-      <p>{tl('Sign up through tradoor\'s links — no extra cost, new-user rewards on Bybit and Binance, and it keeps the charts free.')}</p>
+      <p>{tl('tradoor is free and open source, and stays that way thanks to the people who use it.')}</p>
+      <a class="ref-sponsor" href="https://github.com/sponsors/rsalianto" target="_blank" rel="noopener" onClick={dismissReferralCard}>
+        <span class="heart" aria-hidden="true">
+          ♥
+        </span>
+        <span class="who">
+          <b>{tl('Sponsor on GitHub')}</b>
+          <span>{tl('Servers, market data and new features')}</span>
+        </span>
+        <Icon name="external" size={10} stroke={2} />
+      </a>
+      <p class="or">{tl('Or open an account through our partners: no extra cost, with new-user rewards on Bybit and Binance.')}</p>
       <For each={PARTNERS.filter((p) => p.lead)}>
         {(p) => (
           <a class="lead" href={p.url} target="_blank" rel="sponsored noopener" onClick={dismissReferralCard}>
@@ -183,7 +194,7 @@ export function ReferralCard() {
       </div>
       <footer>
         <button class="later" onClick={dismissReferralCard}>
-          {tl('Not now')}
+          {tl('Maybe later')}
         </button>
       </footer>
     </aside>

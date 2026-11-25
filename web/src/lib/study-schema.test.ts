@@ -77,6 +77,7 @@ Deno.test('the picker says which one is on the chart', () => {
   assertEquals(instanceLabel('ema:50'), '50');
   assertEquals(instanceLabel('bb:20:2.5'), '20 2.5');
   assertEquals(instanceLabel('keylevels'), 'On chart');
+  assertEquals(instanceLabel('fx-tradoor.cvdaggregated:1:0:0:1'), 'On chart', 'a script’s settings, not read in a row');
   assertEquals(instanceLabel('vwap:0:1:0:0'), 'On chart');
   assertEquals(instanceLabel('vpvr:24:70:30:0'), 'On chart');
   assertEquals(instanceLabel('keltner:20:2:10'), '20 2 10');
@@ -141,4 +142,21 @@ Deno.test('cvd is filed with the flow studies, lists its plots by display, and s
   assertEquals(saved, { params: [1, 1, 9], styles: { 'cvd/up': '#00ff00,,', 'cvd/zero': ',2,0' } });
   assertEquals(startingValues(cvd, saved), [1, 1, 9]);
   assertEquals(startingStyles({}, 'cvd', 'cvd:1:1:9', saved), { 'cvd:1:1:9/up': '#00ff00,,', 'cvd:1:1:9/zero': ',2,0' });
+});
+
+Deno.test('another of a Frost Script sets its first setting that can be otherwise', () => {
+  const fx = {
+    kind: 'fx-tradoor.cvdaggregated',
+    short: 'CVD Aggregated',
+    group: 'formula',
+    params: [
+      { name: 'kind', default: 0, min: 0, max: 2, step: 1, kind: 'choice' as const, options: ['Perp', 'Spot', 'Both'] },
+      { name: 'binance', default: 1, min: 0, max: 1, step: 1, kind: 'bool' as const },
+      { name: 'height', default: 30, min: 10, max: 80, step: 1, kind: 'number' as const },
+    ],
+  };
+  assertEquals(anotherId(fx, ['fx-tradoor.cvdaggregated']), 'fx-tradoor.cvdaggregated:1:1:30', 'spot beside the perpetuals');
+  assertEquals(anotherId(fx, ['fx-tradoor.cvdaggregated', 'fx-tradoor.cvdaggregated:1:1:30']), 'fx-tradoor.cvdaggregated:2:1:30');
+  const colour = { ...fx, params: [{ name: 'c', default: 255, min: 0, max: 4_294_967_295, step: 1, kind: 'colour' as const }] };
+  assertEquals(anotherId(colour, ['fx-x']), null, 'a colour alone tells none apart');
 });

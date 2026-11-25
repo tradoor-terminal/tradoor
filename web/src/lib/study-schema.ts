@@ -204,6 +204,18 @@ const ANOTHER_AVERAGE = [50, 200, 20, 100, 9, 21, 34, 55, 89, 144, 233];
 
 /** One more of a study already on the chart: a study's identity is its parameters, so its first takes a value not yet there. Null where there is none to pick. */
 export function anotherId(def: StudyDefinition, active: readonly string[], start = def.params.map((p) => p.default)): string | null {
+  // A Frost Script: its first setting that can be otherwise is — a choice's next option, a tick box the other way, a number doubled.
+  if (def.kind.startsWith('fx-')) {
+    for (const [i, p] of def.params.entries()) {
+      const v = start[i] ?? p.default;
+      const tries = p.kind === 'choice' ? (p.options ?? []).map((_, k) => k) : p.kind === 'bool' ? [1 - v] : !p.kind || p.kind === 'number' ? [2, 3, 4, 5].map((k) => v * k) : [];
+      for (const t of tries) {
+        const id = studyId(def, start.map((x, j) => (j === i ? t : x)));
+        if (t !== v && t >= p.min && t <= p.max && !active.includes(id)) return id;
+      }
+    }
+    return null;
+  }
   const first = def.params[0];
   if (!first || def.kind === 'oi' || def.kind === 'vpvr') return null;
   const rest = start.slice(1);
@@ -218,7 +230,8 @@ export function anotherId(def: StudyDefinition, active: readonly string[], start
 /** What the picker writes for one on the chart: its parameters, or nothing where they would not say which. */
 export function instanceLabel(id: string): string {
   const [kind, ...params] = id.split(':');
-  return params.length === 0 || ['vwap', 'vwaplevels', 'oi', 'vpvr', 'volumedelta', 'cvd'].includes(kind!) ? 'On chart' : params.join(' ');
+  // A script's settings run to a score of numbers that say nothing read in a row.
+  return params.length === 0 || kind!.startsWith('fx-') || ['vwap', 'vwaplevels', 'oi', 'vpvr', 'volumedelta', 'cvd'].includes(kind!) ? 'On chart' : params.join(' ');
 }
 
 // ---------------------------------------------------------------- inputs

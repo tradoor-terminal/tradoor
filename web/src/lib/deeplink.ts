@@ -3,7 +3,8 @@
  * opens that pattern drawn, at its own length; `?market=…&tf=…` a market, and
  * with `&touched=<ms>` the touch of a line there, drawn. `?script=<id>`, from
  * the Community's showcase, puts that public Frost Script on the chart, and
- * `?indicator=<kind>` one of tradoor's own, as the showcase lists them too.
+ * `?script=tradoor.cvdaggregated` one of tradoor's own scripts, and
+ * `?indicator=<kind>` one of tradoor's own indicators, as the showcase lists them too.
  * `&bt=…`, from the strategy tester's link, opens the tester on that strategy
  * and account, its report worked out afresh in this browser. Read
  * once the layout is in, then taken off the address so a reload does not open
@@ -27,7 +28,8 @@ const MOST_STUDIES = 12;
 /** A public script from the showcase, on the chart: said whose it is, or why it is not there. */
 async function addScript(id: string, target: ChartPanelState): Promise<void> {
   try {
-    const s = await api.communityScript(id);
+    // One of tradoor's own (an id with a dot) is in the page already, a public one from the Community.
+    const s = id.includes('.') ? (await import('./formula-sources')).builtIn(id) : await api.communityScript(id);
     const kind = `fx-${s.id}`;
     const studies = splitList(target.studies);
     if (!studies.some((x) => x.split(':')[0] === kind)) {
@@ -80,7 +82,7 @@ export async function followLink(): Promise<void> {
   history.replaceState(history.state, '', url.pathname + url.search + url.hash);
   const target = targetChart();
   if (!target) return;
-  if (script && /^[a-z0-9]{6,16}$/.test(script)) await addScript(script, target);
+  if (script && /^[a-z0-9]{6,16}$|^tradoor\.[a-z]{1,30}$/.test(script)) await addScript(script, target);
   if (indicator && /^[a-z0-9]{2,16}$/.test(indicator)) await addIndicator(indicator, target);
   if (id || touched) {
     try {

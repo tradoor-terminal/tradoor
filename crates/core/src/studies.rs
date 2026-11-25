@@ -483,6 +483,8 @@ pub struct FormulaArt {
     /// Down (top, middle, bottom) and across (left, centre, right).
     pub table: Option<(u8, u8)>,
     pub cells: Vec<ArtCell>,
+    /// `overlay(height, gap)`: drawn in the candle pane along its foot, this share of it tall, the candles kept the gap above.
+    pub overlay: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

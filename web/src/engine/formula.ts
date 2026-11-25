@@ -12,7 +12,7 @@ interface Exports {
   memory: WebAssembly.Memory;
   fx_alloc(len: number): number;
   fx_free(ptr: number, len: number): void;
-  fx_run(src: number, srcLen: number, inputs: number, inputsLen: number, bars: number, n: number, decimals: number): number;
+  fx_run(src: number, srcLen: number, inputs: number, inputsLen: number, bars: number, n: number, decimals: number, names: number, namesLen: number, others: number): number;
   fx_describe(src: number, srcLen: number): number;
   fx_backtest(src: number, srcLen: number, inputs: number, inputsLen: number, bars: number, n: number, decimals: number, settings: number, settingsLen: number, inner: number, innerN: number, funding: number, fundingN: number): number;
   fx_report_ptr(): number;
@@ -33,6 +33,16 @@ export interface FormulaBars {
   volume: Float64Array;
   /** What market buyers took; -1, or no column at all, where the exchange does not say. */
   buy?: Float64Array;
+}
+
+/**
+ * Other markets a script reads, as it names them a line each, and their bars
+ * at the chart's times: six columns a market — open, high, low, close, volume,
+ * buyers — NaN where it had no bar. See engine/others.
+ */
+export interface OtherBars {
+  names: string;
+  cols: Float64Array;
 }
 
 /** The columns `fx_run` and `fx_backtest` read, one after another: crates/frost-script-wasm. */
@@ -91,21 +101,29 @@ function parseError(t: string): { line: number; col: number; message: string } {
 }
 
 /** What it gives for the chart engine: its text and values as they are, or why it did not run. */
-export function runFormula(x: Exports, src: string, inputs: readonly number[], bars: FormulaBars, decimals: number): { meta: string; values: Float64Array } | { error: string } {
+export function runFormula(x: Exports, src: string, inputs: readonly number[], bars: FormulaBars, decimals: number, others: OtherBars | null = null): { meta: string; values: Float64Array } | { error: string } {
   const n = bars.time.length;
+  const names = encoder.encode(others?.names ?? '');
+  const theirs = others?.cols.length ?? 0;
   const result = using(x, src, (sp, sl) => {
     const ip = x.fx_alloc(inputs.length * 8);
     const bp = x.fx_alloc(n * COLUMNS * 8);
+    const np = x.fx_alloc(names.length);
+    const op = x.fx_alloc(theirs * 8);
     try {
       new Float64Array(x.memory.buffer, ip, inputs.length).set(inputs);
       writeBars(x, bp, bars, n);
-      const ok = x.fx_run(sp, sl, ip, inputs.length, bp, n, Math.max(0, Math.min(12, Math.round(decimals)))) === 1;
+      new Uint8Array(x.memory.buffer, np, names.length).set(names);
+      if (others) new Float64Array(x.memory.buffer, op, theirs).set(others.cols);
+      const ok = x.fx_run(sp, sl, ip, inputs.length, bp, n, Math.max(0, Math.min(12, Math.round(decimals))), np, names.length, op) === 1;
       const meta = text(x);
       // Copied out: the module's memory is written again by the next.
       return ok ? { meta, values: new Float64Array(x.memory.buffer, x.fx_values_ptr(), x.fx_values_len()).slice() } : { error: meta };
     } finally {
       x.fx_free(ip, inputs.length * 8);
       x.fx_free(bp, n * COLUMNS * 8);
+      x.fx_free(np, names.length);
+      x.fx_free(op, theirs * 8);
     }
   });
   if ('message' in result) return { error: `error\t${result.line}\t${result.col}\t${result.message}` };

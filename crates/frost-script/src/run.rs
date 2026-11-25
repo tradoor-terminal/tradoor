@@ -9,10 +9,10 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use crate::compile::{math, Ex, Fmt, Keep, ListOp, Order, Program, Ret, Run, Series, ShapeOp, Target, Tx};
+use crate::compile::{math, Ex, Field, Fmt, Keep, ListOp, Order, Program, Ret, Run, Series, ShapeOp, Target, Tx};
 use crate::strategy::{Broker, Report, Signals};
 use crate::syntax::{At, Op};
-use crate::{Bars, BoxArt, Cell, Error, Fill, LabelArt, LineArt, Mark, Output, Plot, Table, MAX_AHEAD, MAX_BOXES, MAX_LABELS, MAX_LINES, MAX_LIST, MAX_LOOKBACK, MAX_LOOP, MAX_STEPS, TABLE_COLUMNS, TABLE_ROWS};
+use crate::{Bars, BoxArt, Cell, Error, Fill, LabelArt, LineArt, Mark, Output, Plot, Table, MAX_AHEAD, MAX_BOXES, MAX_LABELS, MAX_LINES, MAX_LIST, MAX_LOOKBACK, MAX_LOOP, MAX_MARKETS, MAX_STEPS, TABLE_COLUMNS, TABLE_ROWS};
 use tradoor_core::format::fixed;
 use tradoor_core::num::Within;
 use tradoor_core::time::{civil, month_index, week_index, weekday, year_of, DAY};
@@ -215,6 +215,8 @@ enum State {
     Cum(f64),
     Delta,
     Cvd(f64),
+    CvdOf(f64),
+    CumSince(f64, bool),
 }
 
 /// What a remembering function reads besides what it is given.
@@ -268,6 +270,8 @@ impl State {
             Keep::Cum => State::Cum(0.0),
             Keep::Delta => State::Delta,
             Keep::Cvd => State::Cvd(0.0),
+            Keep::CvdOf => State::CvdOf(0.0),
+            Keep::CumSince => State::CumSince(0.0, false),
         }
     }
 
@@ -456,6 +460,26 @@ impl State {
                 }
                 (*total, 1)
             }
+            State::CumSince(total, seen) => {
+                if truth(b) {
+                    *total = 0.0;
+                }
+                if !a.is_nan() {
+                    *total += a;
+                    *seen = true;
+                }
+                (if *seen { *total } else { NA }, 1)
+            }
+            // Another market's: its delta given, NaN where it had no bar.
+            State::CvdOf(total) => {
+                if truth(a) {
+                    *total = 0.0;
+                }
+                if !b.is_nan() {
+                    *total += b;
+                }
+                (*total, 1)
+            }
         }
     }
 }
@@ -579,6 +603,10 @@ struct Machine<'a> {
     /// A backtest's fills, where the script is run as one.
     broker: Option<Broker<'a>>,
     signals: Signals,
+    /// Other markets asked for that were not given, in the order first asked.
+    wanted: Vec<Rc<str>>,
+    /// Which of the markets given it read.
+    read: Vec<bool>,
 }
 
 /// The bar length of `bars`: the commonest gap among the first ones.
@@ -621,6 +649,8 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
         empty,
         broker,
         signals: Signals::default(),
+        wanted: Vec::new(),
+        read: vec![false; bars.others.len()],
     };
     for i in 0..n {
         m.i = i;
@@ -670,7 +700,7 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
     let boxes = m.shapes.boxes.into_iter().map(|(_, b)| b).filter(|b| ok(&[b.x1, b.y1, b.x2, b.y2])).map(|b| BoxArt { x1: reach(b.x1), x2: reach(b.x2), ..b }).collect();
     let table = (!m.cells.is_empty()).then_some(Table { down: p.table.0, across: p.table.1, cells: m.cells });
     let report = m.broker.map(|b| b.finish(bars));
-    Ok((Output { own_pane: p.own_pane, plots, fills, marks, backgrounds: m.backgrounds, bar_colors: m.bar_colors, lines, labels, boxes, table }, report))
+    Ok((Output { own_pane: p.own_pane, plots, fills, marks, backgrounds: m.backgrounds, bar_colors: m.bar_colors, lines, labels, boxes, table, wanted: m.wanted.iter().map(|w| w.to_string()).collect(), read: bars.others.iter().zip(&m.read).filter(|(_, r)| **r).map(|(o, _)| o.market.to_string()).collect(), overlay: p.overlay, title: p.title.clone() }, report))
 }
 
 /// `v` as a text: a whole number bare, else up to eight decimals with no zeros left over.
@@ -872,6 +902,41 @@ impl Machine<'_> {
     }
 
     /// Bar `i`'s delta: from its buyers where the exchange says, else from where it closed in its range.
+    /// Another market's value on this bar; NaN, and the market noted as wanted, where it was not given.
+    fn of(&mut self, field: Field, market: &str) -> Result<f64, Error> {
+        let i = self.i;
+        // No market named: an exchange switched off.
+        if market.is_empty() {
+            return Ok(NA);
+        }
+        let Some(k) = self.bars.others.iter().position(|o| o.market == market) else {
+            if !self.wanted.iter().any(|w| &**w == market) {
+                if self.wanted.len() + self.bars.others.len() >= MAX_MARKETS {
+                    return Err(Error::whole(format!("a script reads {MAX_MARKETS} other markets at most")));
+                }
+                self.wanted.push(Rc::from(market));
+            }
+            return Ok(NA);
+        };
+        self.read[k] = true;
+        let o = &self.bars.others[k];
+        let at = |xs: &[f64]| xs.get(i).copied().unwrap_or(NA);
+        Ok(match field {
+            Field::Open => at(o.open),
+            Field::High => at(o.high),
+            Field::Low => at(o.low),
+            Field::Close => at(o.close),
+            Field::Volume => at(o.volume),
+            Field::Delta => {
+                let (volume, high, low, close) = (at(o.volume), at(o.high), at(o.low), at(o.close));
+                if close.is_nan() {
+                    return Ok(NA);
+                }
+                tradoor_core::indicators::bar_delta(volume, Some(at(o.buy)).filter(|v| *v >= 0.0), high, low, close).0
+            }
+        })
+    }
+
     fn delta(&self, i: usize) -> f64 {
         let b = self.bars;
         let at = |xs: &[f64]| xs.get(i).copied().unwrap_or(NA);
@@ -992,6 +1057,10 @@ impl Machine<'_> {
                     return Ok(NA);
                 }
                 (times.partition_point(|x| *x <= t) - 1) as f64
+            }
+            Ex::Of(field, market) => {
+                let market = self.tx(market)?;
+                self.of(*field, &market)?
             }
             Ex::Call(call) => {
                 let (body, slot) = &**call;

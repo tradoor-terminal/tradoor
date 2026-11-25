@@ -556,6 +556,10 @@ export interface Announcement {
   body: string;
   link: string | null;
   tone: 'info' | 'warn';
+  /** A strip atop the app, or a banner in the middle; absent from a server before banners. */
+  place?: 'bar' | 'centre';
+  /** A banner's picture: an https address or one of the site's files. */
+  image?: string | null;
 }
 
 /** A Frost Script as the server keeps it: `removed` by the moderator, saying `why`, runs for no one. */

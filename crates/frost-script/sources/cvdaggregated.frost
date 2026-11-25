@@ -1,0 +1,91 @@
+// CVD Aggregated
+// One coin's cumulative volume delta on each exchange you tick, a line each,
+// and all of them added up: who is buying where. Drawn under the candles, the
+// candles kept a gap above it, or in a pane of its own. Perpetuals, spot or both; the
+// chart's coin or another; counted in coins or in dollars. Exact where the
+// exchange reports its buyers, as Binance does; elsewhere each bar is estimated
+// from where it closed in its range. An exchange that does not list the coin
+// draws nothing. Each one is cvd("bybit-perp") and the like: copy this to read
+// any market there is.
+pane own
+input kind = "Perp" from "Perp", "Spot", "Both" "Markets"
+input coin = "Chart" from "Chart", "BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "HYPE", "SUI", "ADA", "LINK", "AVAX" "Coin"
+input unit = "Coin" from "Coin", "USD" "Counted in"
+input show = "Each" from "Each", "Total", "Both" "Show"
+input reset = "None" from "None", "Session", "Week", "Month" "Reset"
+input binance = true "Binance"
+input bybit = true "Bybit"
+input okx = true "OKX"
+input bitget = true "Bitget"
+input coinbase = true "Coinbase"
+input hyperliquid = true "Hyperliquid"
+input kraken = false "Kraken"
+input gate = false "Gate"
+input htx = false "HTX"
+input bitfinex = false "Bitfinex"
+input bitstamp = false "Bitstamp"
+input bingx = false "BingX"
+input aster = false "Aster"
+input deribit = false "Deribit"
+input lighter = false "Lighter"
+input place = "Under the candles" from "Under the candles", "Own pane" "Place"
+input height = 30 min 10 max 80 "Height %"
+input gap = 5 min 0 max 50 "Gap above it %"
+
+overlay(place == "Own pane" ? na : height, gap)
+// Which markets, which coin and in what, in the legend: CVD Aggregated · Spot · ETH · USD.
+title("CVD Aggregated · " + kind + (coin == "Chart" ? "" : " · " + coin) + " · " + unit)
+
+period = reset == "Session" ? day : reset == "Week" ? week : reset == "Month" ? month : 0
+restart = changed(period)
+
+// One market's delta on this bar, in coins or dollars; na where it had no bar.
+fn flow(market) {
+  d = delta(market)
+  return unit == "USD" ? d * close(market) : d
+}
+
+// An exchange's CVD since the last reset: its perpetual's flow, its spot's or
+// both; na until either has had a bar. Each market's name is written out whole,
+// from the settings alone, so it is worked out once rather than on every bar,
+// and an exchange not ticked costs next to nothing.
+fn exchange(on, name) {
+  perp = on and kind != "Spot" ? flow(name + "-perp" + (coin == "Chart" ? "" : ":" + coin)) : na
+  spot = on and kind != "Perp" ? flow(name + "-spot" + (coin == "Chart" ? "" : ":" + coin)) : na
+  return cum(kind == "Perp" ? perp : kind == "Spot" ? spot : isna(perp) and isna(spot) ? na : nz(perp) + nz(spot), restart)
+}
+
+cBinance = exchange(binance, "binance")
+cBybit = exchange(bybit, "bybit")
+cOkx = exchange(okx, "okx")
+cBitget = exchange(bitget, "bitget")
+cCoinbase = exchange(coinbase, "coinbase")
+cHyperliquid = exchange(hyperliquid, "hyperliquid")
+cKraken = exchange(kraken, "kraken")
+cGate = exchange(gate, "gate")
+cHtx = exchange(htx, "htx")
+cBitfinex = exchange(bitfinex, "bitfinex")
+cBitstamp = exchange(bitstamp, "bitstamp")
+cBingx = exchange(bingx, "bingx")
+cAster = exchange(aster, "aster")
+cDeribit = exchange(deribit, "deribit")
+cLighter = exchange(lighter, "lighter")
+combined = show == "Each" ? na : nz(cBinance) + nz(cBybit) + nz(cOkx) + nz(cBitget) + nz(cCoinbase) + nz(cHyperliquid) + nz(cKraken) + nz(cGate) + nz(cHtx) + nz(cBitfinex) + nz(cBitstamp) + nz(cBingx) + nz(cAster) + nz(cDeribit) + nz(cLighter)
+
+hline(0, "Zero", gray)
+plot(show != "Total" ? cBinance : na, "Binance", #f0b90b)
+plot(show != "Total" ? cBybit : na, "Bybit", #ff9800)
+plot(show != "Total" ? cOkx : na, "OKX", #9e9e9e)
+plot(show != "Total" ? cBitget : na, "Bitget", #00bcd4)
+plot(show != "Total" ? cCoinbase : na, "Coinbase", #2962ff)
+plot(show != "Total" ? cHyperliquid : na, "Hyperliquid", #26a69a)
+plot(show != "Total" ? cKraken : na, "Kraken", #e040fb)
+plot(show != "Total" ? cGate : na, "Gate", #2bb673)
+plot(show != "Total" ? cHtx : na, "HTX", #1e88e5)
+plot(show != "Total" ? cBitfinex : na, "Bitfinex", #16b157)
+plot(show != "Total" ? cBitstamp : na, "Bitstamp", #8bc34a)
+plot(show != "Total" ? cBingx : na, "BingX", #3f51b5)
+plot(show != "Total" ? cAster : na, "Aster", #f48fb1)
+plot(show != "Total" ? cDeribit : na, "Deribit", #4dd0e1)
+plot(show != "Total" ? cLighter : na, "Lighter", #b0bec5)
+plot(combined, "Total", white, 2)

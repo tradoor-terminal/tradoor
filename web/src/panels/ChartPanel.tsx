@@ -345,6 +345,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
     onCleanup(k.want(market()));
   });
   const footprintOn = () => !props.training && props.panel.footprint === true && footprintable() && !tpoShown();
+  const lineOn = () => props.panel.line === true && !tpoShown() && !footprintOn();
   /** The footprint is being fetched or read, and nothing of it is on the chart yet. */
   const [fpLoading, setFpLoading] = createSignal(false);
   /** A replay stands where there is no footprint at all. */
@@ -915,7 +916,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   // The reader's formulas on it, with their text: again when one is edited.
   createEffect(() => send({ t: 'formulas', id: sid, value: formulaRuns(props.panel.studies) }));
   createEffect(() => send({ t: 'hidden', id: sid, value: props.panel.hidden }));
-  createEffect(() => send({ t: 'studyStyles', id: sid, value: serializeStyles(props.panel.studyStyles) }));
+  // The line chart rides with the styles: the engine draws the closes as a line where `price/line` has a width.
+  createEffect(() => send({ t: 'studyStyles', id: sid, value: serializeStyles(props.panel.studyStyles) + (lineOn() ? ';price/line=,2' : '') }));
   createEffect(() => send({ t: 'log', id: sid, value: props.panel.log }));
   createEffect(() => send({ t: 'tpo', id: sid, value: split() ?? '' }));
   createEffect(() => send({ t: 'tpoSettings', id: sid, value: serializeTpo(props.panel.tpoSettings) }));
@@ -1715,11 +1717,17 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         <Show when={!props.training}>
         <span class="sep" />
         <select
-          data-tip="Candles, the footprint's own volume by price, or TPO profiles — the candles are the brackets, the split is how long a profile runs"
-          onChange={(e) => patchPanel(id, { tpo: e.currentTarget.value === 'footprint' ? '' : e.currentTarget.value, footprint: e.currentTarget.value === 'footprint' })}
+          data-tip="Candles, a line, the footprint's own volume by price, or TPO profiles — the candles are the brackets, the split is how long a profile runs"
+          onChange={(e) => {
+            const v = e.currentTarget.value;
+            patchPanel(id, { tpo: v === 'footprint' || v === 'line' ? '' : v, footprint: v === 'footprint', line: v === 'line' });
+          }}
         >
-          <option value="" selected={!split() && !footprintOn()}>
+          <option value="" selected={!split() && !footprintOn() && !lineOn()}>
             {tl('Candles')}
+          </option>
+          <option value="line" selected={lineOn()}>
+            {tl('Line')}
           </option>
           <Show when={footprintable()}>
             <option value="footprint" selected={footprintOn()}>

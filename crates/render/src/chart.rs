@@ -270,6 +270,10 @@ pub struct StudyMeta {
     pub stats: Vec<(String, String)>,
 }
 
+/// The exchanges' marks as the page numbers them (web/src/lib/mark-order.ts MARK_ORDER): a script's
+/// line named after one wears its mark on the axis.
+const MARK_NAMES: [&str; 15] = ["binance", "bybit", "okx", "bitget", "gate", "htx", "bitfinex", "aster", "lighter", "kraken", "deribit", "hyperliquid", "coinbase", "bitstamp", "bingx"];
+
 /// A line through `points` in its pattern.
 fn stroke(f: &mut Frame, points: &[(f32, f32)], width: f32, color: Color, pattern: Pattern) {
     match pattern {
@@ -443,6 +447,8 @@ struct PaneView {
     group: Group,
     plot: Rect,
     scale: PriceScale,
+    /// A script's overlay: laid over the foot of the candle pane rather than stacked under it.
+    over: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1153,6 +1159,7 @@ impl Chart {
                     art.boxes.push(ArtBox { x1, y1, x2, y2, fill: int(fill), border: int(border), width: int(width) as f32 / 10.0 });
                 }
                 ["table", down, across] => art.table = Some((small(down), small(across))),
+                ["overlay", height, gap] => art.overlay = Some((int(height).min(80) as f32 / 100.0, int(gap).min(50) as f32 / 100.0)),
                 ["cell", col, row, color, background, words] => art.cells.push(ArtCell { col: small(col), row: small(row), text: text(words), color: int(color), background: int(background) }),
                 ["error", line, _, message] => study.stats.push(("Error", if *line == "0" { (*message).to_string() } else { format!("line {line}: {message}") })),
                 _ => {}
@@ -1773,6 +1780,22 @@ impl Chart {
         if self.pct_apart && s.kind == StudyKind::StochRsi { Group::Stoch } else { s.group }
     }
 
+    /// The scripts drawn over the candle pane's foot, by pane: each one's height and the gap above it, as shares of the pane.
+    /// Taller together than most of the pane, each is shortened alike, so the candles keep room.
+    fn overlays(&self) -> Vec<(Group, f32, f32)> {
+        let mut list: Vec<(Group, f32, f32)> = self.visible_studies().filter_map(|(_, s)| s.art.as_ref()?.overlay.map(|(h, g)| (s.group, h, g))).collect();
+        let tall: f32 = list.iter().map(|o| o.1).sum();
+        if tall > 0.85 {
+            list.iter_mut().for_each(|o| o.1 *= 0.85 / tall);
+        }
+        list
+    }
+
+    /// The share of the candle pane the overlays take, stacked, and the widest gap above them; nine tenths at most.
+    fn overlay_room(overlays: &[(Group, f32, f32)]) -> f32 {
+        (overlays.iter().map(|o| o.1).sum::<f32>() + overlays.iter().map(|o| o.2).fold(0.0, f32::max)).min(0.9)
+    }
+
     /// RSI and Stoch RSI in one pane, or each in its own.
     pub fn set_pct_apart(&mut self, apart: bool) {
         if self.pct_apart != apart {
@@ -1805,12 +1828,16 @@ impl Chart {
     }
 
     fn layout(&mut self) {
+        let overlays = self.overlays();
         let mut groups = vec![Group::Price];
         for (_, s) in self.visible_studies() {
             let g = self.pane_group(s);
-            if !groups.contains(&g) {
+            if !groups.contains(&g) && !overlays.iter().any(|o| o.0 == g) {
                 groups.push(g);
             }
+        }
+        for (g, ..) in &overlays {
+            self.pane_state.entry(*g);
         }
         for g in &groups {
             self.pane_state.entry(*g);
@@ -1835,6 +1862,10 @@ impl Chart {
                 // Profiles are read by their shape: every pixel of height is another row.
                 margins = (margins.0.min(TPO_MARGINS.0), margins.1.min(TPO_MARGINS.1));
             }
+            // The candles keep above the overlays and the gap over them.
+            if *g == Group::Price && !overlays.is_empty() {
+                margins.1 = margins.1.max(f64::from(Self::overlay_room(&overlays)));
+            }
             if *g == Group::Price && self.footprint_drawn() {
                 // Every pixel of height is another row a bar can be read in.
                 margins.0 = margins.0.min(0.1);
@@ -1844,8 +1875,17 @@ impl Chart {
                     margins.1 = margins.1.max(f64::from(self.footprint_table(h.max(1.0)) + 24.0) / f64::from(h.max(1.0)));
                 }
             }
-            panes.push(PaneView { group: *g, plot: Rect { x: 0.0, y, w: plot_w, h: h.max(1.0) }, scale: PriceScale::new(mode, f64::from(y), f64::from(h.max(1.0)), margins) });
+            panes.push(PaneView { group: *g, plot: Rect { x: 0.0, y, w: plot_w, h: h.max(1.0) }, scale: PriceScale::new(mode, f64::from(y), f64::from(h.max(1.0)), margins), over: false });
             y += h;
+        }
+        // Each overlay along the candle pane's foot, after the stacked panes so their order holds.
+        // Several stack up from the foot, the first lowest: perpetuals under spot, as two are read.
+        let price = panes[0].plot;
+        let mut floor = price.bottom();
+        for (g, height, _) in &overlays {
+            let h = (price.h * height).max(1.0);
+            floor -= h;
+            panes.push(PaneView { group: *g, plot: Rect { x: 0.0, y: floor, w: plot_w, h }, scale: PriceScale::new(ScaleMode::Normal, f64::from(floor), f64::from(h), self.pane_state[g].margins), over: true });
         }
 
         self.time.width = f64::from(plot_w);
@@ -2410,22 +2450,33 @@ impl Chart {
             let max_vol = (i0..=i1).filter_map(|i| self.bar(i)).map(|b| b.volume).fold(0.0, f64::max);
             if max_vol > 0.0 {
                 let share = self.styles.number("volume", "height", 18.0).within(5.0, 60.0) as f32 / 100.0;
-                let (top, h) = (price.plot.y + price.plot.h * (1.0 - share), price.plot.h * share);
+                // Standing on the overlays, where a script lies along the foot.
+                let floor = price.plot.bottom() - price.plot.h * self.overlays().iter().map(|o| o.1).sum::<f32>();
+                let (top, h) = (floor - price.plot.h * share, price.plot.h * share);
                 let (up, down) = (self.styles.color("volume", "up", t.bull.with_alpha(t.volume_alpha)), self.styles.color("volume", "down", t.bear.with_alpha(t.volume_alpha)));
                 for i in i0..=i1 {
                     let Some(b) = self.bar(i) else { continue };
                     let y = top + h * (1.0 - (b.volume / max_vol) as f32);
                     let base = if b.close >= b.open { up } else { down };
                     let x = f.snap(self.time.x(i as f64) as f32);
-                    f.crisp_rect(x - body / 2.0, y, body, price.plot.bottom() - y, if b.live { base.with_alpha(0x25) } else { base });
+                    f.crisp_rect(x - body / 2.0, y, body, floor - y, if b.live { base.with_alpha(0x25) } else { base });
                 }
             }
         }
         self.paint_watermark(f, price.plot);
-        for i in (i0..=i1).filter(|_| !tpo && !foot) {
+        // A line through the closes in place of the candles, where the chart asks for one.
+        let line = self.styles.of("price", "line");
+        let as_line = !tpo && !foot && line.width.is_some() && !line.off;
+        let mut closes = Vec::new();
+        // A bar past each edge too, so the line runs off the plot rather than stopping short of it.
+        for i in (i0.saturating_sub(usize::from(as_line))..=i1 + usize::from(as_line)).filter(|_| !tpo && !foot) {
             let Some(b) = self.bar(i) else { continue };
             let s = &price.scale;
             let x = f.snap(self.time.x(i as f64) as f32);
+            if as_line {
+                closes.push((x, s.y(b.close) as f32));
+                continue;
+            }
             let base = self.bar_rgba(i).unwrap_or(if b.close >= b.open { t.bull } else { t.bear });
             let fill = base.with_alpha(if b.live { 0x80 } else { t.candle_alpha });
             let (yh, yl, yo, yc) = (s.y(b.high) as f32, s.y(b.low) as f32, s.y(b.open) as f32, s.y(b.close) as f32);
@@ -2445,6 +2496,7 @@ impl Chart {
                 f.stroke_rect(x - body / 2.0, top, body, (bottom - top).max(1.0 / dpr), 1.0 / dpr, base);
             }
         }
+        f.polyline(&closes, line.width.unwrap_or(2.0), line.color.unwrap_or(Color::hex(0x2962ff)));
         if foot {
             // A thin candle at the left of every slot, the cells beside it: a
             // bar the server never recorded still says where it went.
@@ -2695,7 +2747,7 @@ impl Chart {
         // ---- chrome
         f.vline(plot_w, 0.0, avail, 1.0, t.border);
         f.hline(0.0, self.width, avail, 1.0, t.border);
-        for pane in &self.panes[1..] {
+        for pane in self.panes[1..].iter().filter(|p| !p.over) {
             f.hline(0.0, self.width, pane.plot.y, 1.0, t.border);
         }
 
@@ -2709,26 +2761,28 @@ impl Chart {
             text: String,
             bg: Color,
             fg: Color,
+            /// An exchange's mark before the text: a script's line named after the exchange.
+            mark: Option<u8>,
         }
         let mut badges: Vec<Badge> = Vec::new();
         let p = self.precision();
-        badges.push(Badge { pane: 0, y: last_y, text: format_price(last.close, Some(p)), bg: last_color, fg: last_color.contrast_text() });
+        badges.push(Badge { pane: 0, y: last_y, text: format_price(last.close, Some(p)), bg: last_color, fg: last_color.contrast_text(), mark: None });
         if !self.replay && (self.timeframe.source().interval.ms().is_some() || self.timeframe.source().interval == Interval::Mo1) {
             let close_at = self.timeframe.end(self.timeframe.align(now));
-            badges.push(Badge { pane: 0, y: last_y + badge_h, text: format_countdown(close_at - now), bg: t.countdown_background, fg: t.countdown_text });
+            badges.push(Badge { pane: 0, y: last_y + badge_h, text: format_countdown(close_at - now), bg: t.countdown_background, fg: t.countdown_text, mark: None });
         }
         for tag in &tpo_tags {
-            badges.push(Badge { pane: 0, y: price.scale.y(tag.price) as f32, text: format_price(tag.price, Some(p)), bg: tag.color.with_alpha(255), fg: tag.color.with_alpha(255).contrast_text() });
+            badges.push(Badge { pane: 0, y: price.scale.y(tag.price) as f32, text: format_price(tag.price, Some(p)), bg: tag.color.with_alpha(255), fg: tag.color.with_alpha(255).contrast_text(), mark: None });
         }
         for a in &self.alerts {
             let bg = a.color.unwrap_or(t.alert).with_alpha(255);
-            badges.push(Badge { pane: 0, y: price.scale.y(a.price) as f32, text: format_price(a.price, Some(p)), bg, fg: bg.contrast_text() });
+            badges.push(Badge { pane: 0, y: price.scale.y(a.price) as f32, text: format_price(a.price, Some(p)), bg, fg: bg.contrast_text(), mark: None });
         }
         let last_value = |values: &[Option<f64>]| values.iter().rev().flatten().next().copied();
         if !self.hidden.contains("ema200") {
             if let Some(v) = last_value(&self.engine.ema200) {
                 let color = self.styles.color("ema200", "line", t.ema200);
-                badges.push(Badge { pane: 0, y: price.scale.y(v) as f32, text: format_price(v, Some(p)), bg: color, fg: color.contrast_text() });
+                badges.push(Badge { pane: 0, y: price.scale.y(v) as f32, text: format_price(v, Some(p)), bg: color, fg: color.contrast_text(), mark: None });
             }
         }
         for (index, study) in self.visible_studies() {
@@ -2742,7 +2796,8 @@ impl Chart {
                         Some(_) => self.styles.color(&study.id, "down", t.bear),
                         None => self.line_color(&study.id, line, index, li),
                     };
-                    badges.push(Badge { pane: pane_index, y: pane.scale.y(v) as f32, text: self.format_value(study.group, v), bg: color, fg: color.contrast_text() });
+                    let mark = study.art.as_ref().and(MARK_NAMES.iter().position(|m| line.label.eq_ignore_ascii_case(m))).map(|m| m as u8);
+                    badges.push(Badge { pane: pane_index, y: pane.scale.y(v) as f32, text: self.format_value(study.group, v), bg: color, fg: color.contrast_text(), mark });
                 }
             }
         }
@@ -2758,7 +2813,8 @@ impl Chart {
         let crosshair_price = hover.and_then(|(_, cy)| self.pane_at(cy).map(|i| (i, cy)));
 
         // ---- price tick labels, skipping any a badge sits on
-        for (pi, pane) in self.panes.iter().enumerate() {
+        // An overlay's scale is read off its badges: ticks would sit among the candle pane's.
+        for (pi, pane) in self.panes.iter().enumerate().filter(|(_, p)| !p.over) {
             let axis = Rect { x: plot_w, y: pane.plot.y, w: self.axis_width, h: pane.plot.h };
             let ticks = ticks::price_ticks(&pane.scale, 44.0);
             let decimals = match pane.group {
@@ -2766,7 +2822,7 @@ impl Chart {
                 Group::Pct | Group::Stoch => 2,
                 _ => ticks::step_decimals(&ticks).max(2),
             };
-            let label = |v: f64| if matches!(pane.group, Group::Oi | Group::Delta | Group::Cvd | Group::Volume) { format_compact(v) } else { format_price(v, Some(decimals)) };
+            let label = |v: f64| if matches!(pane.group, Group::Oi | Group::Delta | Group::Cvd | Group::Volume) || matches!(pane.group, Group::Formula(_)) && v.abs() >= 1e4 { format_compact(v) } else { format_price(v, Some(decimals)) };
             for v in ticks {
                 let y = pane.scale.y(v) as f32;
                 let near_badge = badges.iter().any(|b| b.pane == pi && (b.y - y).abs() < badge_h);
@@ -2805,7 +2861,12 @@ impl Chart {
                 }
             }
             f.crisp_rect(plot_w + 1.0, badge.y - badge_h / 2.0, self.axis_width - 1.0, badge_h, badge.bg);
-            f.text(plot_w + 6.0, badge.y, badge.text.clone(), badge.fg, Align::Left, Baseline::Middle, font, None, Some(axis));
+            let mut x = plot_w + 6.0;
+            if let Some(mark) = badge.mark {
+                f.icon(plot_w + 3.0 + font / 2.0, badge.y, font, 255, mark, Some(axis));
+                x += font;
+            }
+            f.text(x, badge.y, badge.text.clone(), badge.fg, Align::Left, Baseline::Middle, font, None, Some(axis));
         }
         if let Some((pi, cy)) = crosshair_price {
             let pane = self.panes[pi];
@@ -3365,6 +3426,8 @@ impl Chart {
             Group::Price => format_price(v, Some(self.precision())),
             Group::Oi | Group::Delta | Group::Cvd | Group::Volume => format_compact(v),
             // A formula's own pane holds whatever it works out: decimals by its size, read with no logarithm.
+            // Ten thousand and up as 85.34K, 420.8M, 1.49B: a CVD in dollars runs to ten digits.
+            Group::Formula(_) if v.abs() >= 1e4 => format_compact(v),
             Group::Formula(_) => {
                 let a = v.abs();
                 format_price(v, Some(if a >= 100.0 { 2 } else if a >= 1.0 { 3 } else if a >= 0.01 { 4 } else { 6 }))
@@ -3424,14 +3487,14 @@ impl Chart {
     // ------------------------------------------------------------------ interaction
 
     fn pane_at(&self, y: f32) -> Option<usize> {
-        self.panes.iter().position(|p| y >= p.plot.y && y < p.plot.bottom())
+        self.panes.iter().position(|p| !p.over && y >= p.plot.y && y < p.plot.bottom())
     }
 
     fn zone(&self, x: f32, y: f32) -> Zone {
         if self.panes.is_empty() || x < 0.0 || y < 0.0 || x > self.width || y > self.height {
             return Zone::Outside;
         }
-        if let Some(i) = (1..self.panes.len()).find(|&i| (y - self.panes[i].plot.y).abs() <= SEPARATOR_GRAB) {
+        if let Some(i) = (1..self.panes.len()).find(|&i| !self.panes[i].over && (y - self.panes[i].plot.y).abs() <= SEPARATOR_GRAB) {
             return Zone::Separator(i - 1);
         }
         let plot_w = self.plot_width();
@@ -4908,6 +4971,27 @@ mod tests {
     }
 
     #[test]
+    fn a_line_chart_draws_the_closes_in_place_of_the_candles() {
+        let mut c = chart();
+        c.set_studies("");
+        let blue = Color::hex(0x2962ff);
+        let has = |frame: &Frame, color: Color| frame.colors.chunks(4).any(|v| v[..3] == [color.r, color.g, color.b]);
+        let (candles, blue_before) = {
+            let f = c.render(1_800_000_000_000);
+            (f.vertex_count(), has(f, blue))
+        };
+        assert!(!blue_before);
+        c.set_styles("price/line=,2");
+        let f = c.render(1_800_000_000_000);
+        assert!(has(f, blue), "the line, in its own colour");
+        assert!(f.vertex_count() < candles, "no bodies and wicks");
+        c.set_styles("price/line=#ff0000,3");
+        assert!(has(c.render(1_800_000_000_000), Color::hex(0xff0000)));
+        c.set_styles("");
+        assert_eq!(c.render(1_800_000_000_000).vertex_count(), candles, "candles again");
+    }
+
+    #[test]
     fn empty_chart_says_so() {
         let mut c = Chart::new(ChartTimeframe::D1);
         c.resize(800.0, 400.0, 2.0);
@@ -5052,6 +5136,63 @@ mod tests {
         let label = ticks::crosshair_label(projected, Some(HOUR), false);
         assert!(c.render(1_800_000_000_000).texts.iter().any(|t| t.text == label), "the time label shows the projected slot");
         assert_eq!(c.legend().index, Some(newest), "the legend keeps the newest bar");
+    }
+
+    #[test]
+    fn the_marks_are_numbered_as_the_page_sends_them() {
+        let page = include_str!("../../../web/src/lib/mark-order.ts");
+        let line = page.lines().find(|l| l.starts_with("export const MARK_ORDER")).expect("MARK_ORDER");
+        let list = &line[line.find("= [").map(|i| i + 3).unwrap_or(0)..line.rfind(']').unwrap_or(0)];
+        let names: Vec<&str> = list.split(',').map(|s| s.trim().trim_matches('\'')).collect();
+        assert_eq!(names, MARK_NAMES);
+    }
+
+    #[test]
+    fn two_overlays_stack_up_from_the_foot() {
+        let mut c = chart();
+        let n = c.candles().len();
+        let stacked = { c.render(1_800_000_000_000); c.panes.len() };
+        let values: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        c.set_formula("fx-a", "Perp", "pane\t1\noverlay\t30\t5\nplot\tline\t-\t15\t0\t0\t0\tBybit\n", &values, false);
+        c.set_formula("fx-b", "Spot", "pane\t1\noverlay\t20\t10\nplot\tline\t-\t15\t0\t0\t0\tBybit\n", &values, false);
+        c.render(1_800_000_000_000);
+        let (price, first, second) = (c.panes[0], c.panes[stacked], c.panes[stacked + 1]);
+        assert!(first.over && second.over && first.group != second.group);
+        assert!((first.plot.bottom() - price.plot.bottom()).abs() < 0.5 && (second.plot.bottom() - first.plot.y).abs() < 0.5, "the second on top of the first");
+        assert!((price.scale.margins.1 - 0.6).abs() < 1e-6, "both, and the wider gap: {}", price.scale.margins.1);
+        // Taller together than the pane holds: shortened alike.
+        c.set_formula("fx-b", "Spot", "pane\t1\noverlay\t80\t10\nplot\tline\t-\t15\t0\t0\t0\tBybit\n", &values, false);
+        c.render(1_800_000_000_000);
+        assert!(c.panes[stacked + 1].plot.y > c.panes[0].plot.y + c.panes[0].plot.h * 0.1, "never past the top");
+    }
+
+    #[test]
+    fn an_overlay_lies_along_the_candles_foot_the_candles_kept_above_it() {
+        let mut c = chart();
+        let n = c.candles().len();
+        let stacked = { c.render(1_800_000_000_000); c.panes.len() };
+        // Two lines named after exchanges, a big dollar figure each.
+        let mut values: Vec<f64> = (0..n).map(|i| -4.2e8 + i as f64).collect();
+        values.extend((0..n).map(|i| 1.3e8 - i as f64));
+        let meta = "pane\t1\noverlay\t30\t5\nplot\tline\t-\t15\t0\t0\t0\tBinance\nplot\tline\t-\t15\t0\t0\t0\tTotal\n";
+        c.set_formula("fx-tradoor.cvdaggregated", "CVD Aggregated", meta, &values, false);
+        let frame = c.render(1_800_000_000_000);
+        let (texts, icons) = (frame.texts.iter().map(|t| t.text.clone()).collect::<Vec<_>>(), frame.icons.iter().map(|i| i.mark).collect::<Vec<_>>());
+        assert_eq!(c.panes.len(), stacked + 1);
+        let (price, band) = (c.panes[0], c.panes[stacked]);
+        assert!(band.over && band.group == Group::Formula(0));
+        assert!((band.plot.bottom() - price.plot.bottom()).abs() < 0.5 && (band.plot.h - price.plot.h * 0.3).abs() < 0.5, "the foot of the candle pane, 30% of it");
+        assert!(price.scale.margins.1 >= 0.35 - 1e-9, "the candles keep above it and the 5% gap");
+        let (i0, i1) = c.visible_indices(0.0);
+        let lowest = c.candles()[i0..=i1.min(n - 1)].iter().map(|k| k.low).fold(f64::INFINITY, f64::min);
+        assert!((price.scale.y(lowest) as f32) < band.plot.y, "no candle reaches into it");
+        assert_eq!(c.pane_at(band.plot.y + 2.0), Some(0), "the pointer over it is on the candles");
+        assert!(texts.iter().any(|t| t == "-420.0M") && texts.iter().any(|t| t.ends_with('M') && t.starts_with("130")), "K, M and B: {texts:?}");
+        assert_eq!(icons, [0], "Binance's mark on its badge, none on the total's");
+        // Sent to a pane of its own, it stacks again.
+        c.set_formula("fx-tradoor.cvdaggregated", "CVD Aggregated", "pane\t1\nplot\tline\t-\t15\t0\t0\t0\tBinance\nplot\tline\t-\t15\t0\t0\t0\tTotal\n", &values, false);
+        c.render(1_800_000_000_000);
+        assert!(c.panes.iter().all(|p| !p.over) && c.panes.len() == stacked + 1);
     }
 
     #[test]

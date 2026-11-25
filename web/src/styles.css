@@ -1209,6 +1209,11 @@ table.venues tr.off td { color: var(--dim); }
 .ref-card .x { display: flex; padding: 5px; color: var(--dim); }
 .ref-card .x:hover { color: var(--text); }
 .ref-card p { margin: 6px 12px 12px; color: var(--muted); line-height: 1.55; }
+.ref-card .ref-sponsor { gap: 10px; margin: 0 12px; padding: 8px 10px; }
+.ref-card .ref-sponsor .heart { width: 24px; height: 24px; font-size: .8125rem; }
+.ref-card .ref-sponsor .who { gap: 3px; }
+.ref-card .ref-sponsor > svg { flex: none; color: #db61a2; }
+.ref-card p.or { margin: 12px 12px 8px; font-size: .6875rem; }
 .ref-card .lead { display: flex; align-items: center; gap: 10px; margin: 0 12px 6px; padding: 8px 10px; border: 1px solid color-mix(in oklab, var(--primary) 40%, transparent); background: color-mix(in oklab, var(--primary) 6%, var(--surface-2)); color: var(--text); text-decoration: none; transition: border-color 0.12s; }
 .ref-card .lead:hover { border-color: var(--primary); }
 .ref-card .lead .xlogo { flex: none; }
@@ -1804,6 +1809,24 @@ textarea.jr-in { resize: vertical; line-height: 1.5; }
 /* ---- the owner's announcement, atop the app */
 .announce { display: flex; align-items: center; gap: 8px; flex: none; min-height: 28px; padding: 4px 6px 4px 12px; border-bottom: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border)); background: color-mix(in oklab, var(--primary) 7%, var(--surface)); color: var(--muted); font-size: .71875rem; line-height: 1.4; flex-wrap: wrap; }
 .announce b { color: var(--text); font-weight: 600; }
+.announce-backdrop { z-index: 120; align-items: center; padding: 16px; }
+.announce-banner { position: relative; display: flex; flex-direction: column; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid var(--border); border-top: 2px solid var(--primary); background: var(--surface); box-shadow: 0 24px 80px #000e; outline: none; animation: toast-in 0.25s ease-out; }
+.announce-banner.warn { border-top-color: var(--bear); }
+/* Whole, a near-square shot included: as tall as the screen allows, never cropped. */
+.announce-banner > img { display: block; flex: none; width: 100%; height: auto; max-height: 62vh; object-fit: contain; border-bottom: 1px solid var(--border); background: var(--bg); }
+.announce-banner .x { position: absolute; top: 8px; right: 8px; display: flex; padding: 6px; border: 1px solid var(--border); background: color-mix(in oklab, var(--surface) 85%, transparent); color: var(--muted); }
+.announce-banner .x:hover { color: var(--text); }
+.announce-text { display: grid; gap: 8px; padding: 16px 18px 14px; }
+.announce-text .eyebrow { color: var(--primary); font-size: .625rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.announce-banner.warn .eyebrow { color: var(--bear); }
+.announce-text h2 { margin: 0; color: var(--text); font-size: 1rem; font-weight: 600; }
+.announce-text p { margin: 0; color: var(--muted); font-size: .78125rem; line-height: 1.6; white-space: pre-line; }
+.announce-acts { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 6px; }
+.announce-acts .later { padding: 6px 10px; color: var(--muted); font-size: .75rem; }
+.announce-acts .later:hover { color: var(--text); }
+.announce-acts .go { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--primary); background: color-mix(in oklab, var(--primary) 14%, transparent); color: var(--primary); font-size: .75rem; text-decoration: none; }
+.announce-acts .go:hover { background: var(--primary); color: var(--bg); }
+@media (prefers-reduced-motion: reduce) { .announce-banner { animation: none; } }
 .announce-mark { color: var(--primary); font-size: .5rem; }
 .announce a { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); text-decoration: none; }
 .announce a:hover { text-decoration: underline; }

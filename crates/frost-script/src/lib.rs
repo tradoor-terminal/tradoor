@@ -69,6 +69,8 @@ pub const MAX_LOOP: usize = 10_000;
 /// Steps in one run over every bar: past this, the script stops with an error.
 pub const MAX_STEPS: u64 = 40_000_000;
 pub const MAX_BARS: usize = 100_000;
+/// Other markets one script reads: `cvd("bybit-perp")`.
+pub const MAX_MARKETS: usize = 32;
 pub const MAX_LISTS: usize = 32;
 /// What one list holds: pushed when full, its oldest value is let go.
 pub const MAX_LIST: usize = 5_000;
@@ -164,6 +166,22 @@ pub struct Bars<'a> {
     pub close: &'a [f64],
     pub volume: &'a [f64],
     /// What market buyers took, where the exchange says: below 0, NaN or past its end where it does not.
+    pub buy: &'a [f64],
+    /// Other markets the script reads, as it names them, their bars matched to these.
+    pub others: &'a [Other<'a>],
+}
+
+/// Another market's bars at the chart's times: a value a bar, NaN where it had none, an
+/// empty column where the market is not listed at all.
+pub struct Other<'a> {
+    /// As the script names it: `bybit-perp`, `okx-spot:ETHUSDT`.
+    pub market: &'a str,
+    pub open: &'a [f64],
+    pub high: &'a [f64],
+    pub low: &'a [f64],
+    pub close: &'a [f64],
+    pub volume: &'a [f64],
+    /// Below 0 or NaN where the exchange does not say.
     pub buy: &'a [f64],
 }
 
@@ -287,6 +305,14 @@ pub struct Output {
     pub labels: Vec<LabelArt>,
     pub boxes: Vec<BoxArt>,
     pub table: Option<Table>,
+    /// Other markets it read and was not given, as it names them: give them, and run it again.
+    pub wanted: Vec<String>,
+    /// The markets given it that it read: the rest it no longer needs.
+    pub read: Vec<String>,
+    /// Drawn in the candle pane along its foot: its height and the gap above it, in percent of the pane.
+    pub overlay: Option<(f64, f64)>,
+    /// Its name in the legend, where it gives one.
+    pub title: Option<String>,
 }
 
 /// What a script offers and draws, read without running it: for its settings and the editor.

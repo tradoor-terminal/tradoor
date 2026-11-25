@@ -107,6 +107,8 @@ export interface ChartPanelState extends PanelBase {
   legendShut: boolean;
   /** Stoch RSI in a pane of its own rather than in RSI's. */
   pctApart?: boolean;
+  /** A line through the closes in place of the candles. */
+  line?: boolean;
   /** The strategy tester under the chart, where it has been opened: kept as stored, and read
    *  with every value checked by lib/backtest-state readBacktest before anything uses it. */
   backtest?: unknown;
@@ -407,6 +409,7 @@ function readPanel(id: string, raw: unknown): Panel | null {
     p.log = raw.log === true;
     p.legendShut = raw.legendShut === true;
     p.pctApart = raw.pctApart === true;
+    p.line = raw.line === true;
     p.paneWeights = str(raw.paneWeights, '');
     // A TPO panel from before TPO was a chart style keeps its weekly split, as
     // does a chart saved while TPO was an on/off switch.

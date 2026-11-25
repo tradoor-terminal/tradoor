@@ -91,7 +91,7 @@ Binance, Bybit, OKX, Bitget, Kraken, Hyperliquid, Lighter, Gate, Aster, HTX, Bit
   <img src="docs/screenshots/indicators.webp" alt="The indicator picker: a search box, the Built-in, Community and My scripts tabs, favourites, the built-ins by what they are for, and New Frost Script" width="440">
 </p>
 
-Built-in, Community and My scripts in one searchable picker, and New Frost Script to write your own. EMA ribbon, EMA 200, RSI, Stoch RSI, MACD, Bollinger Bands, Keltner, Ichimoku, VWAP and VWAP levels, anchored VWAP, volume delta, cumulative volume delta (CVD), volume profile, key levels, swing structure map, sessions, moon phases and open interest, each with its own settings, and those saved as the default it starts with. VWAP takes its anchor, price source, offset, bands in deviations or percent, and a timeframe of its own.
+Built-in, Community and My scripts in one searchable picker, and New Frost Script to write your own. EMA ribbon, EMA 200, RSI, Stoch RSI, MACD, Bollinger Bands, Keltner, Ichimoku, VWAP and VWAP levels, anchored VWAP, volume delta, cumulative volume delta (CVD) and CVD aggregated across exchanges, volume profile, key levels, swing structure map, sessions, moon phases and open interest, each with its own settings, and those saved as the default it starts with. VWAP takes its anchor, price source, offset, bands in deviations or percent, and a timeframe of its own.
 
 ### DOM and tape
 
@@ -175,6 +175,7 @@ tradoor's own language for indicators.
 - **Draws:** lines, histograms, levels, fills, marks, labels, boxes, a table, background shading and candle colours.
 - **Language:** texts, lists, your own functions, loops, and colours as `#hex` or `rgb()`.
 - **Settings:** numbers, tick boxes, colours, choices and dates, like any built-in.
+- **Other markets:** `cvd("bybit-perp")`, `close("okx-spot:ETH")` and the like read another exchange's market on the chart's bars, loaded and streamed when first read.
 - **Built-ins as source:** 20 built-ins are written in Frost Script. Open one's settings and the Source tab shows it, giving the same numbers. The five that need more than candles and their buyers say why.
 - **Strategies:** `long`, `short`, `exit`, `stop` and `target` make a script a strategy for the strategy tester.
 - **From Pine Script v6:** the editor copies instructions for an AI chat (Claude, ChatGPT, Gemini…) that converts a Pine v6 indicator or strategy. A conversion pasted with its line breaks lost, or with Pine left in it, is mended on the spot.

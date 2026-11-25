@@ -7,7 +7,7 @@ import init, { ChartEngine, LiveFeedEngine, bar_start, fold_candles, indicator_v
 import wasmUrl from '../wasm/pkg/tradoor_wasm_bg.wasm?url';
 import { decimalsOf, MAX_PRICE_DECIMALS } from '../lib/format';
 import { demoHit } from '../lib/demo';
-import { MARK_ORDER, markIndex } from '../lib/mark-order';
+import { PERP_MARKS, markIndex } from '../lib/mark-order';
 import { parseMarket, ratioLegs, type MarketRef } from '../lib/markets';
 import { concatCols, emptyCols, formingRows, intervalMs, lowerBound, openSeries, rangeCols, sameCols, sliceCols, type CandleSeries, type Cols, type Series } from './history';
 import type { RatioSeries } from './ratio';
@@ -21,6 +21,8 @@ import { StreamHub, type KlineMsg, type SocketState, type StreamListener, type S
 import { onWake } from './reach';
 import { LevelFeed } from './vwap-levels';
 import { describeFormula, formulaModule, formulaReady, runFormula, type FormulaBars } from './formula';
+import { labelOf, othersOf } from './formula-meta';
+import { OtherMarkets } from './others';
 
 /** Closed bars a chart opens with: enough for EMA 200 to settle, with room to scroll. */
 const CHART_BARS = 1_500;
@@ -277,6 +279,8 @@ class Slot {
   private formulasAt = 0;
   private formulaCost = 0;
   private formulaTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Markets the formulas read besides this chart's: see others.ts. Null until one asks. */
+  private others: OtherMarkets | null = null;
   /** The strategy tester's: its bars are handed to the page as they change, and its trades drawn as it says. */
   private watching = false;
   /** The formula ids its drawing goes under now. */
@@ -468,14 +472,48 @@ class Slot {
     const live = b !== null && (n === 0 || b.time > closed.time[n - 1]!);
     const bars = live ? withBar(closed, b) : closed;
     const start = performance.now();
+    const others = this.others?.held.size ? this.others.columns(bars.time) : null;
+    const [wanted, read] = [new Set<string>(), new Set<string>()];
+    let failed = false;
     for (const f of this.formulas) {
-      const out = runFormula(x, f.source, f.inputs, bars, this.engine.precision());
-      if ('error' in out) this.engine.set_formula(f.id, f.label, out.error, EMPTY, false);
-      else this.engine.set_formula(f.id, f.label, out.meta, out.values, live);
+      const out = runFormula(x, f.source, f.inputs, bars, this.engine.precision(), others);
+      if ('error' in out) {
+        failed = true;
+        this.engine.set_formula(f.id, f.label, out.error, EMPTY, false);
+      } else {
+        othersOf(out.meta, wanted, read);
+        this.engine.set_formula(f.id, labelOf(out.meta, f.label), out.meta, out.values, live);
+      }
     }
     this.formulasAt = performance.now();
     this.formulaCost = this.formulasAt - start;
     this.metaDirty = true;
+    if (wanted.size > 0 || this.others) this.wantOthers(wanted, failed ? null : read, n);
+  }
+
+  /** Markets the formulas asked for loaded, and the ones none read any more let go. */
+  private wantOthers(wanted: Set<string>, read: Set<string> | null, bars: number): void {
+    if (!this.others) {
+      const [gen, tf] = [this.gen, info(this.timeframe)];
+      this.others = new OtherMarkets(this.market, {
+        hub,
+        base: tf.base,
+        interval: tf.interval,
+        live: tf.live,
+        group: tf.group,
+        fold: (c) => fold_candles(tf.timeframe, c.time, c.open, c.high, c.low, c.close, c.volume, c.buy, Date.now()) as unknown as Cols,
+        need: (series, n) => baseBars(series, tf, n),
+        combiner: (history) => combiner(tf.timeframe, history),
+        due: () => gen === this.gen && this.formulasDue(),
+      });
+    }
+    // A script that stopped says nothing of what it reads: nothing is let go then.
+    if (read) this.others.keep(new Set([...read, ...wanted]));
+    if (wanted.size > 0) {
+      this.others.want(wanted, bars);
+      // Run again, given them: NaN until each is in.
+      this.formulasDue();
+    }
   }
 
   /** The forming bar moved: formulas run over it again, but no more often than they can afford. */
@@ -622,7 +660,7 @@ class Slot {
         if (!Number.isFinite(price)) return;
         const hit = demoHit(price);
         // Spread across the exchanges the feed follows, as the real ones are.
-        const venues = this.liquidationMarkets.length > 0 ? this.liquidationMarkets : MARK_ORDER;
+        const venues = this.liquidationMarkets.length > 0 ? this.liquidationMarkets : PERP_MARKS;
         const from = venues[Math.floor(Math.random() * venues.length)]!;
         this.engine.push_liquidation(hit.price * hit.qty, hit.long, markIndex(from), Date.now());
       },
@@ -632,6 +670,8 @@ class Slot {
 
   private detach(): void {
     this.gen += 1;
+    this.others?.keep(new Set());
+    this.others = null;
     for (const fn of this.cleanup.splice(0)) fn();
     clearTimeout(this.owedTimer);
     this.owedTimer = undefined;

@@ -15,23 +15,23 @@
     {
       "name": "app js",
       "path": ["dist/assets/index-*.js", "dist/assets/solid-*.js", "dist/assets/store-*.js", "dist/assets/api-*.js", "dist/assets/markets-*.js", "dist/assets/prefs-*.js"],
-      "limit": "67 kB"
+      "limit": "68 kB"
     },
     {
       "name": "engine worker js",
       "path": "dist/assets/worker-*.js",
-      "limit": "26 kB"
+      "limit": "27 kB"
     },
     {
       "name": "engine wasm",
       "path": "dist/assets/tradoor_wasm_bg-*.wasm",
-      "limit": "156 kB",
+      "limit": "157 kB",
       "gzip": true
     },
     {
       "name": "frost script wasm",
       "path": "dist/assets/frost-script-*.wasm",
-      "limit": "90 kB",
+      "limit": "91 kB",
       "gzip": true
     },
     {

@@ -184,6 +184,10 @@ pub enum Keep {
     Cum,
     Delta,
     Cvd,
+    /// Another market's CVD: its condition, then that market's delta.
+    CvdOf,
+    /// `cum(x, c)`: the sum since `c` was last true, na until `x` has had a value.
+    CumSince,
 }
 
 impl Keep {
@@ -284,7 +288,7 @@ const CONSTS: [(&str, f64); 13] = [
 ];
 
 /// What a script draws along the bars, at its top level.
-const DRAWS: [&str; 7] = ["plot", "histogram", "hline", "fill", "mark", "background", "barcolor"];
+const DRAWS: [&str; 9] = ["plot", "histogram", "hline", "fill", "mark", "background", "barcolor", "overlay", "title"];
 /// Shapes it keeps and moves, anywhere.
 const SHAPES: [&str; 22] = [
     "line", "label", "box", "delete", "set_x1", "set_y1", "set_x2", "set_y2", "set_xy1", "set_xy2", "set_x", "set_y", "set_xy", "set_text", "set_color", "set_textcolor", "set_width", "get_x1", "get_y1", "get_x2", "get_y2",
@@ -423,9 +427,26 @@ pub enum Ex {
     Shape(ShapeOp, Vec<Ex>, Option<Box<Tx>>, At),
     /// The place of the bar that holds a moment.
     BarAt(Box<Ex>),
+    /// Another market's value on this bar, the market named by the text: `close("bybit-perp")`.
+    Of(Field, Box<Tx>),
     /// A function of the script's, written out here: its lines, then the slot it gives back in.
     Call(Box<(Vec<Run>, usize)>),
 }
+
+/// What a script reads of another market's bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Field {
+    Open,
+    High,
+    Low,
+    Close,
+    Volume,
+    /// What its market buyers took less what its sellers did: `tradoor_core::indicators::bar_delta`.
+    Delta,
+}
+
+/// The functions that read another market, by name.
+const FIELDS: [(&str, Field); 6] = [("open", Field::Open), ("high", Field::High), ("low", Field::Low), ("close", Field::Close), ("volume", Field::Volume), ("delta", Field::Delta)];
 
 /// A text.
 #[derive(Clone, Debug, PartialEq)]
@@ -525,6 +546,10 @@ pub struct Program {
     pub table: (u8, u8),
     /// Whether it draws shapes, shades the background, colours candles, or fills a table.
     pub draws: bool,
+    /// `overlay(height, gap)`: drawn in the candle pane along its foot, this share of it tall, the candles kept the other share above it.
+    pub overlay: Option<(f64, f64)>,
+    /// `title(text)`: its name in the legend, from its settings — `CVD · Spot · USD`.
+    pub title: Option<String>,
     /// The orders it gives, each once at most: a strategy where it gives an entry.
     pub orders: Vec<Order>,
 }
@@ -1505,6 +1530,34 @@ impl<'a> Compiler<'a> {
                 self.program.draws = true;
                 Ok(Some(Run::Background(self.program.backgrounds - 1, c)))
             }
+            "title" => {
+                let [t] = args else { return Err(Error::at(node.at, "title(text)")) };
+                // Worked out once: a text of words and settings, never one that changes bar to bar.
+                let Tx::Lit(text) = self.text(t, true)? else { return Err(Error::at(t.at, "a title is written from texts and settings alone, the same on every bar")) };
+                if text.chars().count() > 2 * MAX_TITLE {
+                    return Err(Error::at(t.at, format!("a title is {} characters at most", 2 * MAX_TITLE)));
+                }
+                if self.program.title.replace(text.to_string()).is_some() {
+                    return Err(Error::at(node.at, "title(…) once a script"));
+                }
+                Ok(None)
+            }
+            "overlay" => {
+                let a = self.bind(node.at, name, &["height", "gap"], args, named)?;
+                let Some(h) = a[0] else { return Err(Error::at(node.at, "overlay(height, gap)")) };
+                // na: a pane of its own as ever, so a setting can choose.
+                let e = self.num(h, true)?;
+                if constant(&e).is_some_and(f64::is_nan) {
+                    return Ok(None);
+                }
+                let height = self.fixed_num(Some(h), 0.0, 10.0..=80.0, "an overlay's height, in percent of the candle pane,")?;
+                let gap = self.fixed_num(a[1], 5.0, 0.0..=50.0, "the gap above an overlay, in percent of the candle pane,")?;
+                if self.program.overlay.replace((height, gap)).is_some() {
+                    return Err(Error::at(node.at, "overlay(…) once a script"));
+                }
+                self.program.own_pane = true;
+                Ok(None)
+            }
             _ => {
                 let a = self.bind(node.at, name, &["color"], args, named)?;
                 let Some(c) = a[0] else { return Err(Error::at(node.at, "barcolor(color)")) };
@@ -1656,6 +1709,7 @@ impl<'a> Compiler<'a> {
                     (Op::Add, Any::T(x), Any::T(y)) => Any::T(join(x, y)),
                     (Op::Add, Any::T(x), Any::N(y)) => Any::T(join(x, Tx::Num(Box::new(y), Fmt::Plain))),
                     (Op::Add, Any::N(x), Any::T(y)) => Any::T(join(Tx::Num(Box::new(x), Fmt::Plain), y)),
+                    (Op::Eq | Op::Ne, Any::T(Tx::Lit(x)), Any::T(Tx::Lit(y))) => Any::N(Ex::Num(f64::from(u8::from((x == y) == (*op == Op::Eq))))),
                     (Op::Eq | Op::Ne, Any::T(x), Any::T(y)) => Any::N(Ex::TextEq(*op == Op::Eq, Box::new(x), Box::new(y))),
                     (_, Any::N(x), Any::N(y)) => Any::N(Ex::Bin(*op, Box::new(x), Box::new(y))),
                     (_, Any::L(_), _) | (_, _, Any::L(_)) => return Err(Error::at(node.at, "a list is not worked out with: read its values with get(i), sum() or avg()")),
@@ -1667,8 +1721,16 @@ impl<'a> Compiler<'a> {
                 let is_na = |n: &Node| matches!(&n.expr, Expr::Name(w) if w == "na");
                 let (x, y) = (self.any(a, top)?, self.any(b, top)?);
                 match (x, y) {
-                    (Any::N(x), Any::N(y)) => Any::N(Ex::Pick(Box::new(c), Box::new(x), Box::new(y))),
-                    (Any::T(x), Any::T(y)) => Any::T(Tx::Pick(Box::new(c), Box::new(x), Box::new(y))),
+                    (Any::N(x), Any::N(y)) => match constant(&c) {
+                        // A setting's choice: the side not taken is never read.
+                        Some(v) => Any::N(if truth(v) { x } else { y }),
+                        None => Any::N(Ex::Pick(Box::new(c), Box::new(x), Box::new(y))),
+                    },
+                    // A fixed condition picks its text here and now.
+                    (Any::T(x), Any::T(y)) => match constant(&c) {
+                        Some(v) => Any::T(if truth(v) { x } else { y }),
+                        None => Any::T(Tx::Pick(Box::new(c), Box::new(x), Box::new(y))),
+                    },
                     (Any::T(x), Any::N(_)) if is_na(b) => Any::T(Tx::Pick(Box::new(c), Box::new(x), Box::new(Tx::Lit(Rc::from(""))))),
                     (Any::N(_), Any::T(y)) if is_na(a) => Any::T(Tx::Pick(Box::new(c), Box::new(Tx::Lit(Rc::from(""))), Box::new(y))),
                     _ => return Err(Error::at(node.at, "both sides of c ? a : b are numbers, or both are texts")),
@@ -1751,6 +1813,13 @@ impl<'a> Compiler<'a> {
                 let x = self.num(x, top)?;
                 return Ok(Any::T(Tx::Num(Box::new(x), Fmt::Duration)));
             }
+            _ if args.len() == 1 && FIELDS.iter().any(|(n, _)| *n == name) => {
+                let field = FIELDS.iter().find(|(n, _)| *n == name).map(|(_, f)| *f).unwrap_or(Field::Close);
+                return match self.any(&args[0], top)? {
+                    Any::T(market) => Ok(Any::N(Ex::Of(field, Box::new(market)))),
+                    _ => Err(Error::at(args[0].at, format!("{name}(market) reads another market, named as \"bybit-perp\" or \"okx-spot:ETHUSDT\""))),
+                };
+            }
             "barat" => {
                 let [t] = args else { return Err(Error::at(node.at, "barat(time)")) };
                 return Ok(Any::N(Ex::BarAt(Box::new(self.num(t, top)?))));
@@ -1794,6 +1863,26 @@ impl<'a> Compiler<'a> {
         } else if name == "cvd" && args.is_empty() {
             // Never started again: NaN is no reason to.
             (vec![Ex::Num(f64::NAN)], Vec::new())
+        } else if name == "cum" && args.len() == 2 {
+            let values = vec![self.num(&args[0], top)?, self.num(&args[1], top)?];
+            self.hold(1, node.at)?;
+            self.program.sites.push(Keep::CumSince);
+            return Ok(Any::N(Ex::Keep(self.program.sites.len() - 1, values)));
+        } else if name == "cvd" && args.len() <= 2 {
+            // cvd(condition), or another market's: cvd("bybit-perp") and cvd("bybit-perp", condition).
+            match (self.any(&args[0], top)?, args.get(1)) {
+                (Any::N(c), None) => (vec![c], Vec::new()),
+                (Any::T(market), reset) => {
+                    let reset = match reset {
+                        Some(r) => self.num(r, top)?,
+                        None => Ex::Num(f64::NAN),
+                    };
+                    self.hold(1, node.at)?;
+                    self.program.sites.push(Keep::CvdOf);
+                    return Ok(Any::N(Ex::Keep(self.program.sites.len() - 1, vec![reset, Ex::Of(Field::Delta, Box::new(market))])));
+                }
+                _ => return Err(Error::at(node.at, "cvd(), cvd(condition), cvd(market) or cvd(market, condition)")),
+            }
         } else if args.len() == series + lengths {
             let values = args[..series].iter().map(|a| self.num(a, top)).collect::<Result<Vec<_>, _>>()?;
             (values, args[series..].iter().collect())
@@ -1984,13 +2073,21 @@ impl<'a> Compiler<'a> {
     }
 }
 
+/// Two texts as one; two fixed ones as one fixed text, so a market's name built from settings is looked up once.
 fn join(a: Tx, b: Tx) -> Tx {
-    match a {
-        Tx::Join(mut parts) => {
-            parts.push(b);
+    match (a, b) {
+        (Tx::Lit(x), Tx::Lit(y)) => Tx::Lit(Rc::from(format!("{x}{y}"))),
+        (Tx::Join(mut parts), b) => {
+            if let (Some(Tx::Lit(x)), Tx::Lit(y)) = (parts.last(), &b) {
+                let both = Tx::Lit(Rc::from(format!("{x}{y}")));
+                parts.pop();
+                parts.push(both);
+            } else {
+                parts.push(b);
+            }
             Tx::Join(parts)
         }
-        a => Tx::Join(vec![a, b]),
+        (a, b) => Tx::Join(vec![a, b]),
     }
 }
 

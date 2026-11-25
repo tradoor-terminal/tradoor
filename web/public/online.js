@@ -268,14 +268,17 @@
       $('an-body').value = current.body;
       $('an-link').value = current.link ?? '';
       $('an-tone').value = current.tone;
-      set('an-state', `● up since ${when(current.id)}`, 'ok');
+      $('an-place').value = current.place ?? 'bar';
+      $('an-image').value = current.image ?? '';
+      const ends = current.ends ? `, ends ${when(current.ends)}` : '';
+      set('an-state', current.ends && current.ends <= Date.now() ? `● ended ${when(current.ends)}` : `● up since ${when(current.id)}${ends}`, current.ends && current.ends <= Date.now() ? 'warn' : 'ok');
     } else {
       set('an-state', '● none up', 'warn');
     }
   }
   $('an-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = { title: $('an-title').value, body: $('an-body').value, link: $('an-link').value || null, tone: $('an-tone').value };
+    const body = { title: $('an-title').value, body: $('an-body').value, link: $('an-link').value || null, tone: $('an-tone').value, place: $('an-place').value, image: $('an-image').value || null, days: Number($('an-days').value) };
     const r = await admin('/api/admin/announcement', { method: 'PUT', body: JSON.stringify(body) }).catch(() => null);
     if (r?.ok) {
       set('an-note', 'Published: every reader sees it within a few minutes.');

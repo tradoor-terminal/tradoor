@@ -75,13 +75,14 @@ fn source(name: &str) -> &'static str {
         "sessions" => include_str!("../sources/sessions.frost"),
         "cvd" => include_str!("../sources/cvd.frost"),
         "volumedelta" => include_str!("../sources/volumedelta.frost"),
+        "cvdaggregated" => include_str!("../sources/cvdaggregated.frost"),
         _ => panic!("no source {name}"),
     }
 }
 
 fn run_source(name: &str, inputs: &[f64], c: &[Candle]) -> Output {
     let k = columns(c);
-    let bars = Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[] };
+    let bars = Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[], others: &[] };
     run(source(name), inputs, &bars, 2).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
@@ -319,7 +320,7 @@ fn a_description_lists_the_settings_and_lines() {
 fn check(src: &str) -> Result<Output, Error> {
     let c = candles();
     let k = columns(&c[..300]);
-    run(src, &[], &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[] }, 2)
+    run(src, &[], &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &[], others: &[] }, 2)
 }
 
 fn fails(src: &str, line: u32, says: &str) {
@@ -468,7 +469,7 @@ fn a_function_that_remembers_hears_every_bar_even_on_the_side_not_taken() {
 fn run_with_buyers(src: &str, inputs: &[f64], c: &[Candle]) -> Output {
     let k = columns(c);
     let buy: Vec<f64> = c.iter().map(|c| c.taker_buy.unwrap_or(-1.0)).collect();
-    run(src, inputs, &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &buy }, 2).unwrap_or_else(|e| panic!("{e}"))
+    run(src, inputs, &Bars { time: &k.time, open: &k.open, high: &k.high, low: &k.low, close: &k.close, volume: &k.volume, buy: &buy, others: &[] }, 2).unwrap_or_else(|e| panic!("{e}"))
 }
 
 #[test]
@@ -503,7 +504,7 @@ fn cvd_starts_again_where_its_condition_holds_and_delta_is_still_a_name() {
     let time: Vec<f64> = (0..4).map(|i| t0 + f64::from(i) * 3_600_000.0).collect();
     let (open, high, low, close, volume) = (vec![100.0; 4], vec![110.0; 4], vec![90.0; 4], vec![100.0; 4], vec![10.0; 4]);
     let buy = [7.0, 2.0, 8.0, -1.0];
-    let bars = Bars { time: &time, open: &open, high: &high, low: &low, close: &close, volume: &volume, buy: &buy };
+    let bars = Bars { time: &time, open: &open, high: &high, low: &low, close: &close, volume: &volume, buy: &buy, others: &[] };
     let src = "pane own\ndelta = 1\nplot(delta(), \"D\")\nplot(cvd(), \"All\")\nplot(cvd(bar == 2), \"Again\")\nplot(delta, \"Name\")";
     let out = run(src, &[], &bars, 2).unwrap();
     assert_eq!(line(&out, "D"), [4.0, -6.0, 6.0, 0.0], "the last bar's close is mid-range: no buyers reported, none estimated");
@@ -511,4 +512,135 @@ fn cvd_starts_again_where_its_condition_holds_and_delta_is_still_a_name() {
     assert_eq!(line(&out, "Again"), [4.0, -2.0, 6.0, 6.0]);
     assert_eq!(line(&out, "Name"), [1.0; 4], "a variable may still be called delta");
     fails("if close > 0 {\n  x = cvd()\n}", 2, "outside if");
+}
+
+/// Four hourly bars, and a second market's at the same times.
+fn two_markets() -> (Vec<f64>, [Vec<f64>; 5], [Vec<f64>; 6]) {
+    let t0 = 1_700_000_000_000.0;
+    let time: Vec<f64> = (0..4).map(|i| t0 + f64::from(i) * 3_600_000.0).collect();
+    let own = [vec![100.0; 4], vec![110.0; 4], vec![90.0; 4], vec![100.0; 4], vec![10.0; 4]];
+    // Its buyers reported on three bars; the last bar it has none at all.
+    let theirs = [vec![50.0, 50.0, 50.0, f64::NAN], vec![60.0, 60.0, 60.0, f64::NAN], vec![40.0, 40.0, 40.0, f64::NAN], vec![50.0, 55.0, 45.0, f64::NAN], vec![2.0, 4.0, 6.0, f64::NAN], vec![2.0, -1.0, 1.0, f64::NAN]];
+    (time, own, theirs)
+}
+
+#[test]
+fn another_market_is_asked_for_then_read_at_the_charts_bars() {
+    let (time, [open, high, low, close, volume], t) = two_markets();
+    let src = "pane own\nplot(cvd(\"bybit-perp\"), \"C\")\nplot(cvd(\"bybit-perp\", bar == 2), \"Again\")\nplot(delta(\"bybit-perp\"), \"D\")\nplot(close(\"okx-spot:\" + \"ETH\"), \"P\")\nplot(volume(\"\"), \"None\")\nplot(close, \"Own\")";
+    let bare = Bars { time: &time, open: &open, high: &high, low: &low, close: &close, volume: &volume, buy: &[], others: &[] };
+    let first = run(src, &[], &bare, 2).unwrap();
+    assert_eq!(first.wanted, ["bybit-perp", "okx-spot:ETH"], "asked for once each, in order; an empty name is no market");
+    assert!(line(&first, "C").iter().all(|v| *v == 0.0) && line(&first, "D").iter().all(|v| v.is_nan()));
+    assert_eq!(line(&first, "Own"), [100.0; 4], "the chart's own bars as ever");
+
+    let bybit = Other { market: "bybit-perp", open: &t[0], high: &t[1], low: &t[2], close: &t[3], volume: &t[4], buy: &t[5] };
+    let unlisted = Other { market: "okx-spot:ETH", open: &[], high: &[], low: &[], close: &[], volume: &[], buy: &[] };
+    let given = [bybit, unlisted];
+    let bars = Bars { others: &given, ..bare };
+    let out = run(src, &[], &bars, 2).unwrap();
+    assert!(out.wanted.is_empty());
+    assert_eq!(out.read, ["bybit-perp", "okx-spot:ETH"]);
+    // 2*2-2; unreported, so estimated: closed three quarters up its range, half its 4 net bought; 2*1-6; no bar.
+    let d = line(&out, "D");
+    assert_eq!(&d[..3], [2.0, 2.0, -4.0]);
+    assert!(d[3].is_nan());
+    assert_eq!(line(&out, "C"), [2.0, 4.0, 0.0, 0.0], "a bar it lacks adds nothing");
+    assert_eq!(line(&out, "Again"), [2.0, 4.0, -4.0, -4.0]);
+    assert!(line(&out, "P").iter().all(|v| v.is_nan()), "a market not listed reads as na");
+
+    let many: String = (0..=crate::MAX_MARKETS).map(|k| format!("x{k} = close(\"binance-perp:C{k}USDT\")\n")).collect();
+    let err = run(&many, &[], &bare, 2).unwrap_err();
+    assert!(err.message.contains("other markets at most"), "{}", err.message);
+}
+
+#[test]
+fn cvd_aggregated_asks_for_each_ticked_exchange_and_adds_them_up() {
+    let (time, [open, high, low, close, volume], t) = two_markets();
+    let bare = Bars { time: &time, open: &open, high: &high, low: &low, close: &close, volume: &volume, buy: &[], others: &[] };
+    let src = source("cvdaggregated");
+    let out = run(src, &[], &bare, 2).unwrap();
+    assert_eq!(out.wanted, ["binance-perp", "bybit-perp", "okx-perp", "bitget-perp", "coinbase-perp", "hyperliquid-perp"]);
+    // Both kinds, ETH, Kraken on, Binance off.
+    let out = run(src, &[2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], &bare, 2).unwrap();
+    assert_eq!(&out.wanted[..3], ["bybit-perp:ETH", "bybit-spot:ETH", "okx-perp:ETH"]);
+    assert!(out.wanted.contains(&"kraken-spot:ETH".to_string()) && !out.wanted.iter().any(|w| w.starts_with("binance")));
+
+    let named: Vec<String> = run(src, &[], &bare, 2).unwrap().wanted;
+    let given: Vec<Other> = named.iter().map(|m| if m == "bybit-perp" { Other { market: m, open: &t[0], high: &t[1], low: &t[2], close: &t[3], volume: &t[4], buy: &t[5] } } else { Other { market: m, open: &[], high: &[], low: &[], close: &[], volume: &[], buy: &[] } }).collect();
+    let bars = Bars { others: &given, ..bare };
+    let out = run(src, &[], &bars, 2).unwrap();
+    assert!(out.wanted.is_empty());
+    assert_eq!(line(&out, "Bybit"), [2.0, 4.0, 0.0, 0.0]);
+    assert!(line(&out, "Binance").iter().all(|v| v.is_nan()), "an exchange with no bars draws nothing");
+    assert!(line(&out, "Total").iter().all(|v| v.is_nan()), "each exchange alone by default");
+    // Counted in dollars, the total shown too, starting again each UTC day: the third bar opens one.
+    let out = run(src, &[0.0, 0.0, 1.0, 2.0, 1.0], &bars, 2).unwrap();
+    assert_eq!(line(&out, "Bybit"), [100.0, 210.0, -180.0, -180.0], "each bar's delta at its own close: 2*50, 2*55, then -4*45 afresh");
+    assert_eq!(line(&out, "Total"), line(&out, "Bybit"));
+}
+
+#[test]
+fn cvd_aggregated_reads_thirty_markets_over_a_long_chart_within_its_steps() {
+    // Every exchange ticked, perpetuals and spot, in dollars, a total and a daily reset: the most it does.
+    let n = 30_000;
+    let time: Vec<f64> = (0..n).map(|i| 1_700_000_000_000.0 + i as f64 * 60_000.0).collect();
+    let wave: Vec<f64> = (0..n).map(|i| 100.0 + (i as f64 / 50.0).sin()).collect();
+    let (high, low): (Vec<f64>, Vec<f64>) = (wave.iter().map(|v| v + 1.0).collect(), wave.iter().map(|v| v - 1.0).collect());
+    let volume = vec![10.0; n];
+    let buy: Vec<f64> = (0..n).map(|i| if i % 2 == 0 { 6.0 } else { -1.0 }).collect();
+    let bare = Bars { time: &time, open: &wave, high: &high, low: &low, close: &wave, volume: &volume, buy: &[], others: &[] };
+    let mut inputs = vec![2.0, 0.0, 1.0, 2.0, 1.0];
+    inputs.extend([1.0; 15]);
+    let src = source("cvdaggregated");
+    let named = run(src, &inputs, &bare, 2).unwrap().wanted;
+    assert_eq!(named.len(), 30);
+    let given: Vec<Other> = named.iter().map(|m| Other { market: m, open: &wave, high: &high, low: &low, close: &wave, volume: &volume, buy: &buy }).collect();
+    let out = run(src, &inputs, &Bars { others: &given, ..bare }, 2).unwrap_or_else(|e| panic!("{e}"));
+    assert!(out.wanted.is_empty() && out.read.len() == 30);
+    let total = line(&out, "Total");
+    assert!(total.iter().all(|v| v.is_finite()), "every exchange has every bar");
+    let each = line(&out, "Binance")[n - 1];
+    assert!((total[n - 1] - each * 15.0).abs() < 1e-6 * each.abs(), "fifteen alike");
+}
+
+#[test]
+fn fixed_texts_are_joined_and_compared_once() {
+    let out = check("input c = \"ETH\" from \"Chart\", \"ETH\" \"Coin\"\nm = \"okx-spot\" + (c == \"Chart\" ? \"\" : \":\" + c)\nplot(m == \"okx-spot:ETH\" ? 1 : 0, \"Same\")\nplot(\"a\" + \"b\" != \"ab\" ? 1 : 0, \"Differs\")\nplot(str(close) + \"x\" == \"x\" ? 1 : 0, \"Moving\")").unwrap();
+    assert!(line(&out, "Same").iter().all(|v| *v == 1.0));
+    assert!(line(&out, "Differs").iter().all(|v| *v == 0.0));
+    assert!(line(&out, "Moving").iter().all(|v| *v == 0.0), "a text over the bars still worked out on each");
+}
+
+#[test]
+fn cum_starts_again_where_its_condition_holds_and_waits_for_a_value() {
+    let out = check("x = bar < 2 ? na : 1\nplot(cum(x), \"All\")\nplot(cum(x, bar == 5), \"Since\")").unwrap();
+    assert_eq!(&line(&out, "All")[..7], [0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0], "cum(x) as ever: na counts as nothing");
+    let since = line(&out, "Since");
+    assert!(since[0].is_nan() && since[1].is_nan(), "na until x has a value");
+    assert_eq!(&since[2..7], [1.0, 2.0, 3.0, 1.0, 2.0]);
+}
+
+#[test]
+fn an_overlay_lies_along_the_candles_foot_or_a_setting_sends_it_to_its_own_pane() {
+    let src = "input place = \"Under\" from \"Under\", \"Own pane\" \"Place\"\noverlay(place == \"Own pane\" ? na : 30, 5)\nplot(close, \"C\")";
+    let under = check(src).unwrap();
+    assert_eq!((under.overlay, under.own_pane), (Some((30.0, 5.0)), true));
+    let own = run_with_buyers(src, &[1.0], &candles()[..50]);
+    assert_eq!((own.overlay, own.own_pane), (None, false), "na: as the script's pane says");
+    assert_eq!(check("overlay(25)\nplot(close, \"C\")").unwrap().overlay, Some((25.0, 5.0)), "a gap of 5 unless given");
+    fails("overlay(90, 5)\nplot(close, \"C\")", 1, "10 to 80");
+    fails("overlay(30, 5)\noverlay(30, 5)\nplot(close, \"C\")", 2, "once a script");
+    assert_eq!(run_with_buyers(source("cvdaggregated"), &[], &candles()[..50]).overlay, Some((30.0, 5.0)), "CVD Aggregated starts under the candles");
+}
+
+#[test]
+fn a_title_names_the_script_in_the_legend_from_its_settings() {
+    let c = &candles()[..50];
+    assert_eq!(run_with_buyers(source("cvdaggregated"), &[], c).title.as_deref(), Some("CVD Aggregated · Perp · Coin"));
+    assert_eq!(run_with_buyers(source("cvdaggregated"), &[1.0, 2.0, 1.0], c).title.as_deref(), Some("CVD Aggregated · Spot · ETH · USD"));
+    assert_eq!(run_with_buyers(source("cvdaggregated"), &[2.0], c).title.as_deref(), Some("CVD Aggregated · Both · Coin"));
+    assert_eq!(check("plot(close, \"C\")").unwrap().title, None, "a script without one keeps its name");
+    fails("title(\"Close \" + str(close))\nplot(close, \"C\")", 1, "the same on every bar");
+    fails("title(\"A\")\ntitle(\"B\")\nplot(close, \"C\")", 2, "once a script");
 }

@@ -74,6 +74,9 @@ export async function deleteFormula(id: string): Promise<void> {
 }
 
 export const kindOf = (f: Pick<Formula, 'id'>): string => `fx-${f.id}`;
+
+/** One of tradoor's own scripts (lib/formula-sources): an id with a dot is never one the server gives. */
+export const isBuiltIn = (id: string): boolean => id.startsWith('tradoor.');
 export const isFormulaKind = (kind: string): boolean => kind.startsWith('fx-');
 
 // ---------------------------------------------------------------- the Community
@@ -111,14 +114,14 @@ export function loadCommunity(): Promise<void> {
 const [shared, setShared] = createSignal<ReadonlyMap<string, Formula | 'gone'>>(new Map());
 const asked = new Set<string>();
 
-function readShared(id: string): void {
-  if (asked.has(id)) return;
+function readShared(id: string): Promise<void> {
+  if (asked.has(id)) return Promise.resolve();
   asked.add(id);
-  api
-    .communityScript(id)
+  // An id with a dot is one of tradoor's own (lib/formula-sources BUILT_IN), never the server's.
+  return (id.includes('.') ? import('./formula-sources').then((m) => m.builtIn(id)) : api.communityScript(id))
     .then((s): Formula => ({ id: s.id, name: s.name, source: s.source, checks: true, updated: s.updated, removed: false, why: null, public: true, about: s.about, preview: s.preview, by: s.username }))
     .then(
-      (f) => setShared((m) => new Map(m).set(id, f)),
+      (f) => void setShared((m) => new Map(m).set(id, f)),
       (e: unknown) => {
         // Not found: made private or removed. Out of reach: asked again on the next page.
         if ((e as { status?: number }).status === 404) setShared((m) => new Map(m).set(id, 'gone'));
@@ -127,13 +130,13 @@ function readShared(id: string): void {
     );
 }
 
-/** A script by its kind: the reader's own, or someone's public one, read the first time it is asked for. */
+/** A script by its kind: the reader's own, someone's public one or tradoor's, read the first time it is asked for. */
 export function formulaOf(kind: string): Formula | undefined {
   const own = list().find((f) => kindOf(f) === kind);
   if (own || !isFormulaKind(kind)) return own;
   const id = kind.slice(3);
   const got = shared().get(id);
-  if (got === undefined) readShared(id);
+  if (got === undefined) void readShared(id);
   return got === 'gone' ? undefined : got;
 }
 
@@ -177,6 +180,7 @@ export function describe(source: string): Promise<FormulaDescription> {
 
 /** As a study definition, for its settings: each setting a parameter. */
 export async function formulaDefinition(kind: string): Promise<StudyDefinition | null> {
+  if (kind.includes('.')) await readShared(kind.slice(3));
   const f = formulaOf(kind);
   if (!f) return null;
   const d = await describe(f.source);

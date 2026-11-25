@@ -21,6 +21,10 @@
 //! box     4278190335  4278190335  10             fill, border, width in tenths   + x1 y1 x2 y2
 //! table   0     2                                 down, across
 //! cell    0     1     4278190335  0  Avg rise     column, row, colour, background, text
+//! title   CVD · Spot                              its name in the legend
+//! overlay 30    5                                 in the candle pane along its foot: height and gap above, percent
+//! want    bybit-perp                              another market it read and was not given
+//! read    okx-spot:ETHUSDT                        one it was given and read
 //! error   3     12    ema(…) …                    line, column, message
 //! ```
 //!
@@ -34,7 +38,7 @@
 //! `TRADE` a trade (see `trade`), the equity a bar, and the bars decided as stopped.
 use std::cell::RefCell;
 
-use tradoor_frost_script::{backtest, describe, run, Bars, Error, Exit, Funding, Inner, InputKind, Output, PlotKind, PlotStyle, Report, Settings, Size, Trade};
+use tradoor_frost_script::{backtest, describe, run, Bars, Other, Error, Exit, Funding, Inner, InputKind, Output, PlotKind, PlotStyle, Report, Settings, Size, Trade};
 
 #[derive(Default)]
 struct Out {
@@ -179,6 +183,18 @@ fn drawing(out: &Output, n: usize) -> (String, Vec<f64>) {
             t += &format!("cell\t{}\t{}\t{}\t{}\t{}\n", c.col, c.row, c.color, c.background, multiline(&c.text));
         }
     }
+    if let Some(title) = &out.title {
+        t += &format!("title\t{}\n", clean(title));
+    }
+    if let Some((height, gap)) = out.overlay {
+        t += &format!("overlay\t{}\t{}\n", height.round() as u32, gap.round() as u32);
+    }
+    for w in &out.wanted {
+        t += &format!("want\t{}\n", clean(w));
+    }
+    for r in &out.read {
+        t += &format!("read\t{}\n", clean(r));
+    }
     (t, values)
 }
 
@@ -190,13 +206,22 @@ const COLUMNS: usize = 7;
 /// where the exchange does not say); `decimals` is how many a price of the
 /// market is written with. 1 when it ran, 0 when it says why not.
 ///
+/// `names` are the other markets the script reads, a line each, as it names
+/// them; `others` their bars at the chart's times, six columns a market (open,
+/// high, low, close, volume, buyers), one market after another in that order.
+///
 /// # Safety
 /// The pointers are the page's allocations, of the lengths given.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fx_run(src: *const u8, src_len: usize, inputs: *const f64, inputs_len: usize, bars: *const f64, n: usize, decimals: u32) -> u32 {
-    let (src, inputs, all) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(COLUMNS))) };
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn fx_run(src: *const u8, src_len: usize, inputs: *const f64, inputs_len: usize, bars: *const f64, n: usize, decimals: u32, names: *const u8, names_len: usize, others: *const f64) -> u32 {
+    let (src, inputs, all, names) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(COLUMNS)), text(names, names_len)) };
+    let names: Vec<&str> = names.split('\n').filter(|m| !m.is_empty()).collect();
+    let theirs = unsafe { numbers(others, n.saturating_mul(6).saturating_mul(names.len())) };
     let column = |k: usize| all.get(k * n..(k + 1) * n).unwrap_or(&[]);
-    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6) };
+    let their = |m: usize, k: usize| theirs.get((m * 6 + k) * n..(m * 6 + k + 1) * n).unwrap_or(&[]);
+    let others: Vec<Other> = names.iter().enumerate().map(|(m, market)| Other { market, open: their(m, 0), high: their(m, 1), low: their(m, 2), close: their(m, 3), volume: their(m, 4), buy: their(m, 5) }).collect();
+    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6), others: &others };
     let (text, values, ok) = match run(src, inputs, &bars, decimals.min(12) as u8) {
         Ok(out) => {
             let (t, values) = drawing(&out, n);
@@ -296,7 +321,7 @@ pub unsafe extern "C" fn fx_backtest(src: *const u8, src_len: usize, inputs: *co
     let (src, inputs, all, set) = unsafe { (text(src, src_len), numbers(inputs, inputs_len), numbers(bars, n.saturating_mul(COLUMNS)), numbers(set, set_len)) };
     let (low, rates) = unsafe { (numbers(inner, inner_n.saturating_mul(5)), numbers(funding, funding_n.saturating_mul(2))) };
     let column = |k: usize| all.get(k * n..(k + 1) * n).unwrap_or(&[]);
-    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6) };
+    let bars = Bars { time: column(0), open: column(1), high: column(2), low: column(3), close: column(4), volume: column(5), buy: column(6), others: &[] };
     let lower = |k: usize| low.get(k * inner_n..(k + 1) * inner_n).unwrap_or(&[]);
     let inner = Inner { time: lower(0), open: lower(1), high: lower(2), low: lower(3), close: lower(4) };
     let paid = |k: usize| rates.get(k * funding_n..(k + 1) * funding_n).unwrap_or(&[]);

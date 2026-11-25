@@ -48,7 +48,7 @@
   .an-form textarea { resize: vertical; }
   /* The page's inputs grow along a row; down this column they keep their own height. */
   .an-form > input, .an-form > textarea { flex: none; width: 100%; }
-  .an-form #an-link { flex: 1 1 220px; }
+  .an-form #an-link, .an-form #an-image { flex: 1 1 220px; }
   .an-form .bar { margin: 0; }
   .an-form button.go { border-color: var(--bull); color: var(--bull); }
   #an-state { letter-spacing: 0; text-transform: none; }
@@ -132,13 +132,18 @@
         <input id="an-title" maxlength="80" placeholder="Title, 80 characters at most" required autocomplete="off">
         <textarea id="an-body" maxlength="400" rows="3" placeholder="Text, optional: 400 characters at most"></textarea>
         <div class="bar">
+          <select id="an-place" aria-label="Where"><option value="bar">Bar atop the app</option><option value="centre">Banner in the centre</option></select>
+          <input id="an-image" placeholder="Picture for the banner: /announce/….webp or https://, optional" autocomplete="off" spellcheck="false">
+          <select id="an-days" aria-label="How long"><option value="0">Until taken down</option><option value="1">1 day</option><option value="3">3 days</option><option value="7">1 week</option><option value="14">2 weeks</option><option value="30">1 month</option><option value="92">3 months</option></select>
+        </div>
+        <div class="bar">
           <input id="an-link" placeholder="https:// link, optional" autocomplete="off" spellcheck="false">
           <select id="an-tone" aria-label="Tone"><option value="info">Info</option><option value="warn">Warning</option></select>
           <button type="button" id="an-down">Take down</button>
           <button type="submit" class="go">Publish</button>
         </div>
       </form>
-      <p class="note" id="an-note">Shown atop tradoor to every reader until they close it; a new one shows again to all.</p>
+      <p class="note" id="an-note">A bar shows atop tradoor until a reader closes it. A banner shows in the centre: once to a signed-in reader, and on every visit to one signed out, until it ends or is taken down. A new one shows again to all.</p>
     </div>
     <div class="card scripts">
       <h2><svg class="ice" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L12 22M3.3 7L20.7 17M3.3 17L20.7 7M12 6.4L10 4.2M12 6.4L14 4.2M7.2 9.2L4.2 9.8M7.2 9.2L6.2 6.3M7.2 14.8L6.2 17.7M7.2 14.8L4.2 14.2M12 17.6L14 19.8M12 17.6L10 19.8M16.8 14.8L19.8 14.2M16.8 14.8L17.8 17.7M16.8 9.2L17.8 6.3M16.8 9.2L19.8 9.8"/></svg>Frost Script</h2>

@@ -1,11 +1,14 @@
-/** The owner's announcement, a strip atop the app: written as text, its link opened apart. */
-import { Show } from 'solid-js';
+/** The owner's announcement, a strip atop the app: written as text, its link opened apart. A banner in the centre loads its own code. */
+import { lazy, Show } from 'solid-js';
 import { announcement, closeAnnouncement } from '../lib/announcement';
 import { Icon } from '../lib/icons';
 import { tl } from '../lib/i18n';
 
+const AnnouncementBanner = lazy(() => import('./AnnouncementBanner'));
+
 export function AnnouncementBar() {
   return (
+    <Show when={announcement()?.place !== 'centre'} fallback={<AnnouncementBanner />}>
     <Show when={announcement()} keyed>
       {(a) => (
         <div class="announce" classList={{ warn: a.tone === 'warn' }} role="status">
@@ -29,6 +32,7 @@ export function AnnouncementBar() {
           </button>
         </div>
       )}
+    </Show>
     </Show>
   );
 }

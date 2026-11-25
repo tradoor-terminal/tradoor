@@ -17,6 +17,7 @@ import { Icon } from '../lib/icons';
 import { session } from '../lib/owner';
 import { readPref, writePref } from '../lib/prefs';
 import { anotherId, CATEGORIES, entries, instanceLabel, savedDefault, searchEntries, startingStyles, startingValues, studyId, type Entry } from '../lib/study-schema';
+import { BUILT_IN, builtIn } from '../lib/formula-sources';
 import { splitList, withLayer, type StudyStyles } from '../lib/study-style';
 import { toast } from '../lib/toasts';
 import type { ChartPanelState } from '../workspace/model';
@@ -60,7 +61,9 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
   const hidden = () => splitList(props.panel.hidden);
   const removed = () => splitList(props.panel.removed);
   const on = (kind: string) => active().filter((id) => id.split(':')[0] === kind);
-  const builtins = createMemo(() => (defs.state === 'ready' ? entries(defs()!) : []).filter((e) => !(props.panel.tpo && e.layer?.candles)));
+  /** tradoor's own scripts, listed with the indicators they sit beside. */
+  const ours = Object.entries(BUILT_IN).map(([id, b]): Listed => ({ id: `fx-${id}`, name: b.name, short: b.name, category: 'Flow and positioning', keywords: b.keywords, about: b.about, where: '', def: { kind: `fx-${id}`, short: b.name, group: 'formula', params: [] }, by: 'tradoor' }));
+  const builtins = createMemo(() => [...(defs.state === 'ready' ? entries(defs()!) : []).filter((e) => !(props.panel.tpo && e.layer?.candles)), ...(defs.state === 'ready' ? ours : [])]);
   /** The reader's own scripts: added as any indicator is, with the settings they write. */
   const mine = createMemo(() =>
     formulas().map((f): Listed => {
@@ -100,7 +103,8 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
   /** Someone's public script, as a copy of one's own in the editor: to read, or to change. */
   const copy = async (e: Listed) => {
     try {
-      const s = await api.communityScript(e.id.slice(3));
+      const id = e.id.slice(3);
+      const s = id.includes('.') ? builtIn(id) : await api.communityScript(id);
       props.onClose();
       setEditing({ seed: { name: `My ${s.name}`.slice(0, 40), source: s.source }, panelId: props.panel.id });
     } catch (err) {
@@ -159,7 +163,8 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
   const addFresh = async (e: Entry, another: boolean): Promise<string | null> => {
     const saved = e.def && savedDefault(doc.studyDefaults, e.def.kind);
     // A script's inputs are its own to read: the picker's row names none.
-    const def = saved && isFormulaKind(e.def!.kind) ? ((await formulaDefinition(e.def!.kind)) ?? e.def) : e.def;
+    // Another beside it reads them too, to set one otherwise.
+    const def = (saved || another) && isFormulaKind(e.def!.kind) ? ((await formulaDefinition(e.def!.kind)) ?? e.def) : e.def;
     if (!def) return null;
     const start = startingValues(def, saved ?? null);
     const id = another ? anotherId(def, active(), start) : studyId(def, start);
@@ -250,7 +255,7 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
           when={e.layer}
           fallback={
             <For each={on(e.id)}>
-              {(id) => (
+              {(id, i) => (
                 <button
                   class="inst"
                   data-tip="On this chart: open its settings"
@@ -259,7 +264,9 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
                     settings(id);
                   }}
                 >
+                  {/* Two alike in name are told apart by their place. */}
                   {instanceLabel(id)}
+                  {instanceLabel(id) === 'On chart' && on(e.id).length > 1 ? ` ${i() + 1}` : ''}
                   <Icon name="settings" size={11} />
                 </button>
               )}
@@ -280,7 +287,8 @@ export function IndicatorPicker(props: { panel: ChartPanelState; onClose(): void
             </button>
           </Show>
         </Show>
-        <Show when={e.layer ? removed().includes(e.id) : on(e.id).length === 0 || (e.def && anotherId(e.def, active()))}>
+        {/* A script's settings are read when it is added: another is offered, and set otherwise then. */}
+        <Show when={e.layer ? removed().includes(e.id) : on(e.id).length === 0 || isFormulaKind(e.id) || (e.def && anotherId(e.def, active()))}>
           <button
             class="iadd"
             aria-label={on(e.id).length > 0 ? tlf('Add another {0}', e.short) : `Add ${e.short}`}

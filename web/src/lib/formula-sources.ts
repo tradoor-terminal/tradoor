@@ -3,11 +3,13 @@
  * the formula crate's tests hold to the indicators' own numbers), and the new
  * formula's first text. Loaded with the editor and the settings dialog alone.
  */
+import type { CommunityScript } from './api';
 import atr from '../../../crates/frost-script/sources/atr.frost?raw';
 import avwap from '../../../crates/frost-script/sources/avwap.frost?raw';
 import bb from '../../../crates/frost-script/sources/bb.frost?raw';
 import cvd from '../../../crates/frost-script/sources/cvd.frost?raw';
 import ema from '../../../crates/frost-script/sources/ema.frost?raw';
+import cvdaggregated from '../../../crates/frost-script/sources/cvdaggregated.frost?raw';
 import ema200 from '../../../crates/frost-script/sources/ema200.frost?raw';
 import ichimoku from '../../../crates/frost-script/sources/ichimoku.frost?raw';
 import keltner from '../../../crates/frost-script/sources/keltner.frost?raw';
@@ -49,6 +51,27 @@ export const SOURCES: Record<string, { name: string; source: string }> = {
   moon: { name: 'Moon Phases', source: moon },
 };
 
+/**
+ * tradoor's own scripts the picker offers beside the built-in indicators, by id
+ * (an id with a dot is never one the server gives): what the picker lists, and their text.
+ */
+export const BUILT_IN: Record<string, { name: string; about: string; keywords: string }> = {
+  'tradoor.cvdaggregated': {
+    name: 'CVD Aggregated',
+    about: 'One coin’s cumulative volume delta on each exchange you tick, a line each, and their total, under the candles or in its own pane: perpetuals, spot or both, in coins or dollars. A Frost Script: its source shows how to read any market with cvd("bybit-perp").',
+    keywords: 'cvd cumulative volume delta exchanges aggregate aggregated combined multi exchange screener perp spot binance bybit okx coinbase frost script',
+  },
+};
+
+export const SCRIPTS: Record<string, string> = { 'tradoor.cvdaggregated': cvdaggregated };
+
+/** One of them, as the Community gives a script; not found, as it says so. */
+export function builtIn(id: string): CommunityScript & { source: string } {
+  const b = BUILT_IN[id];
+  if (!b) throw Object.assign(new Error('no such script'), { status: 404 });
+  return { id, name: b.name, source: SCRIPTS[id]!, about: b.about, preview: null, username: 'tradoor', updated: 0, created: 0 };
+}
+
 /** The built-ins a script cannot be written for, and why: each reads what a script is not given. */
 export const UNWRITTEN: Record<string, string> = {
   liquidations: 'It reads the liquidations the exchanges report as they happen. A script is given the chart’s candles alone.',
@@ -59,7 +82,7 @@ export const UNWRITTEN: Record<string, string> = {
 };
 
 /** To start from in the editor: the built-ins, and one that is not. */
-export const EXAMPLES: { name: string; source: string }[] = [{ name: 'SuperTrend', source: supertrend }, ...Object.values(SOURCES)];
+export const EXAMPLES: { name: string; source: string }[] = [{ name: 'SuperTrend', source: supertrend }, ...Object.values(SOURCES), { name: 'CVD Aggregated', source: cvdaggregated }];
 
 export const NEW_FORMULA = `// My indicator
 // Lines that start with // are notes. Each line below is worked out on every bar.
