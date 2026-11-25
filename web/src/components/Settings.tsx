@@ -5,7 +5,7 @@ import { OWNER_PATTERN, ownerId, session, switchOwner } from '../lib/owner';
 import { ALL_EXCHANGES, ExchangeLogo } from '../lib/exchanges';
 import { Icon, type IconName } from '../lib/icons';
 import { deviceZone, LOCAL_ZONE, offsetLabel, offsetMinutes, TIME_ZONE_KEY, timeZone } from '../lib/timezone';
-import { CANDLE_PARTS, CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME, type ChartGroup } from '../lib/theme';
+import { CANDLE_PARTS, CHART_THEME, FONT_BOLD, FONT_PX, TEXT_SCALE, UI_THEME } from '../lib/theme';
 import { THEMES, themeOf, withTheme, type ThemePreset } from '../lib/themes';
 import { LayoutsMenu } from './LayoutsMenu';
 import { formatDateTime } from '../lib/timezone';
@@ -40,6 +40,36 @@ function Swatch(props: { name: string; label: string; fallback: string }) {
     </label>
   );
 }
+
+/** What a chart colour colours: Settings sets them out by it. */
+type ChartGroup = 'canvas' | 'candles' | 'layers' | 'tpo' | 'drawings' | 'studies';
+
+/** Each chart colour's name in Settings, and the group it is set out in: kept here, out of the page's first load. */
+const CHART_LABELS: Record<string, [string, ChartGroup]> = {
+  background: ['Background', 'canvas'],
+  border: ['Grid and borders', 'canvas'],
+  text: ['Axis text', 'canvas'],
+  labelBackground: ['Axis labels', 'canvas'],
+  crosshair: ['Crosshair', 'canvas'],
+  bull: ['Up candles', 'candles'],
+  bear: ['Down candles', 'candles'],
+  line: ['Line chart', 'candles'],
+  ribbonFast: ['Ribbon, bullish', 'layers'],
+  ribbonSlow: ['Ribbon, bearish', 'layers'],
+  ema200: ['EMA 200', 'layers'],
+  tpo: ['Value area', 'tpo'],
+  tpoOutside: ['Outside value', 'tpo'],
+  tpoPoc: ['Point of control', 'tpo'],
+  drawing: ['Drawings', 'drawings'],
+  drawingSelected: ['Selected drawing', 'drawings'],
+  study0: ['Indicator 1', 'studies'],
+  study1: ['Indicator 2', 'studies'],
+  study2: ['Indicator 3', 'studies'],
+  study3: ['Indicator 4', 'studies'],
+  study4: ['Indicator 5', 'studies'],
+  study5: ['Indicator 6', 'studies'],
+};
+const chartColours = (group: ChartGroup) => CHART_THEME.filter((t) => CHART_LABELS[t.name]?.[1] === group).map((t) => ({ ...t, label: CHART_LABELS[t.name]![0] }));
 
 /** The chart's colours set out by what they colour, each group with a word on where it shows. */
 const CHART_GROUPS: readonly { group: ChartGroup; title: string; hint: string }[] = [
@@ -120,7 +150,7 @@ function GridColour() {
 
 /** The indicators' own colours, taken in turn as they are added: a row of six. */
 function Palette() {
-  const keys = CHART_THEME.filter((t) => t.group === 'studies');
+  const keys = chartColours('studies');
   return (
     <div class="study-colors">
       <For each={keys}>
@@ -557,7 +587,7 @@ function ThemesSection() {
                   <GridColour />
                 </Show>
                 <div class="swatches one">
-                  <For each={CHART_THEME.filter((t) => t.group === g.group)}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>
+                  <For each={chartColours(g.group)}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>
                 </div>
               </section>
             )}
