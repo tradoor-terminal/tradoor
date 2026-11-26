@@ -6,7 +6,7 @@
 import type { ExchangeId } from './exchanges';
 
 /** The engine names them in the same order (crates/render chart.rs MARK_NAMES): a script's line named after one wears its mark. */
-export const MARK_ORDER: readonly ExchangeId[] = ['binance', 'bybit', 'okx', 'bitget', 'gate', 'htx', 'bitfinex', 'aster', 'lighter', 'kraken', 'deribit', 'hyperliquid', 'coinbase', 'bitstamp', 'bingx'];
+export const MARK_ORDER: readonly ExchangeId[] = ['binance', 'bybit', 'okx', 'bitget', 'gate', 'htx', 'bitfinex', 'aster', 'lighter', 'kraken', 'deribit', 'hyperliquid', 'coinbase', 'bitstamp', 'bingx', 'blofin'];
 /** Those that close positions out: the first twelve. */
 export const PERP_MARKS = MARK_ORDER.slice(0, 12);
 

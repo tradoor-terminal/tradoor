@@ -31,12 +31,13 @@ export type Venue =
   | 'bitstamp-perp'
   | 'bingx-spot'
   | 'bingx-perp'
+  | 'blofin-perp'
   /** Series the tradoor server works out: the crypto market cap and its parts, the VIX. */
   | 'index';
 
-export const VENUES = [...['binance', 'bybit', 'okx', 'bitget', 'kraken', 'gate', 'aster', 'htx', 'bitfinex', 'bitstamp', 'bingx'].flatMap((e) => [`${e}-spot`, `${e}-perp`]), 'hyperliquid-perp', 'lighter-perp', 'deribit-perp', 'coinbase-spot', 'index'] as readonly Venue[];
+export const VENUES = [...['binance', 'bybit', 'okx', 'bitget', 'kraken', 'gate', 'aster', 'htx', 'bitfinex', 'bitstamp', 'bingx'].flatMap((e) => [`${e}-spot`, `${e}-perp`]), 'hyperliquid-perp', 'lighter-perp', 'deribit-perp', 'blofin-perp', 'coinbase-spot', 'index'] as readonly Venue[];
 
-const EXCHANGE_NAME: Record<string, string> = { binance: 'Binance', bybit: 'Bybit', okx: 'OKX', bitget: 'Bitget', hyperliquid: 'Hyperliquid', kraken: 'Kraken', lighter: 'Lighter', gate: 'Gate', aster: 'Aster', htx: 'HTX', bitfinex: 'Bitfinex', deribit: 'Deribit', coinbase: 'Coinbase', bitstamp: 'Bitstamp', bingx: 'BingX', index: 'Index' };
+const EXCHANGE_NAME: Record<string, string> = { binance: 'Binance', bybit: 'Bybit', okx: 'OKX', bitget: 'Bitget', hyperliquid: 'Hyperliquid', kraken: 'Kraken', lighter: 'Lighter', gate: 'Gate', aster: 'Aster', htx: 'HTX', bitfinex: 'Bitfinex', deribit: 'Deribit', coinbase: 'Coinbase', bitstamp: 'Bitstamp', bingx: 'BingX', blofin: 'BloFin', index: 'Index' };
 
 export interface MarketRef {
   venue: Venue;

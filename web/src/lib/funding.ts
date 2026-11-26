@@ -3,7 +3,7 @@
  * when each settlement was and its rate, positive where longs pay. Read from
  * the exchange that runs the market, which keeps it: Binance, Bybit and
  * Hyperliquid for as far back as a chart goes, OKX for its last three months,
- * Bitget a page at a time, BingX through the tradoor server, which it answers where it
+ * Bitget a page at a time, BloFin as OKX, BingX through the tradoor server, which it answers where it
  * answers no page. Another exchange's is not read, and the report says so.
  * Read by the page, for the strategy tester; through the tradoor server where
  * the network blocks the exchange, as the chart's candles are.
@@ -37,7 +37,7 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : Number(v));
 /** Whether funding is read for the market: a perpetual on one of the exchanges above. */
 export function fundingKnown(market: string): boolean {
   const venue = parseMarket(market)?.venue;
-  return venue === 'binance-perp' || venue === 'bybit-perp' || venue === 'okx-perp' || venue === 'hyperliquid-perp' || venue === 'bitget-perp' || venue === 'bingx-perp';
+  return venue === 'binance-perp' || venue === 'bybit-perp' || venue === 'okx-perp' || venue === 'hyperliquid-perp' || venue === 'bitget-perp' || venue === 'bingx-perp' || venue === 'blofin-perp';
 }
 
 async function postInfo(body: unknown): Promise<unknown> {
@@ -90,6 +90,20 @@ export async function fundingRates(market: string, from: number, to: number): Pr
         const list = body.code === '0' ? (body.data ?? []) : [];
         if (list.length === 0) break;
         for (const f of list) add(f.fundingTime, f.realizedRate || f.fundingRate);
+        after = Math.min(...list.map((f) => num(f.fundingTime)));
+        if (after <= from || list.length < 100) break;
+      }
+      break;
+    }
+    case 'blofin-perp': {
+      // As OKX's: newest first, a hundred a page, back from `after`.
+      const inst = await nativeOf(market);
+      let after = to + 1;
+      for (let page = 0; page < MOST_PAGES; page++) {
+        const body = (await getJson(`https://openapi.blofin.com/api/v1/market/funding-rate-history?instId=${encodeURIComponent(inst)}&after=${after}&limit=100`)) as { code?: string; data?: { fundingTime: string; fundingRate: string }[] };
+        const list = body.code === '0' ? (body.data ?? []) : [];
+        if (list.length === 0) break;
+        for (const f of list) add(f.fundingTime, f.fundingRate);
         after = Math.min(...list.map((f) => num(f.fundingTime)));
         if (after <= from || list.length < 100) break;
       }

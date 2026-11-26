@@ -2,7 +2,7 @@
  * Every trade with the side that took it, and the order book, for the DOM and
  * tape panels and footprints recorded in the browser: sockets of their own, so
  * the charts' sockets carry none of it. Sizes are as
- * the exchange sends them; a swap's on OKX, Gate or HTX are contracts, turned
+ * the exchange sends them; a swap's on OKX, Gate, HTX or BloFin are contracts, turned
  * into coins by the reader (lib/orderflow).
  */
 import type { Venue } from '../lib/markets';

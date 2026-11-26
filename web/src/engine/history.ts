@@ -129,6 +129,7 @@ const PAGE_LIMIT: Partial<Record<Venue, number>> = {
   'kraken-spot': 720,
   'kraken-perp': 2000,
   'lighter-perp': 500,
+  'blofin-perp': 1440,
   index: 2000,
 };
 

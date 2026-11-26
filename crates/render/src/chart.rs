@@ -272,7 +272,7 @@ pub struct StudyMeta {
 
 /// The exchanges' marks as the page numbers them (web/src/lib/mark-order.ts MARK_ORDER): a script's
 /// line named after one wears its mark on the axis.
-const MARK_NAMES: [&str; 15] = ["binance", "bybit", "okx", "bitget", "gate", "htx", "bitfinex", "aster", "lighter", "kraken", "deribit", "hyperliquid", "coinbase", "bitstamp", "bingx"];
+const MARK_NAMES: [&str; 16] = ["binance", "bybit", "okx", "bitget", "gate", "htx", "bitfinex", "aster", "lighter", "kraken", "deribit", "hyperliquid", "coinbase", "bitstamp", "bingx", "blofin"];
 
 /// A line through `points` in its pattern.
 fn stroke(f: &mut Frame, points: &[(f32, f32)], width: f32, color: Color, pattern: Pattern) {

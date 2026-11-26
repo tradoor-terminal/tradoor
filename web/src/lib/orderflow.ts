@@ -393,6 +393,10 @@ const CONTRACT: Partial<Record<Venue, { url(native: string): string; coins(body:
     url: (native) => `https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(native)}`,
     coins: (body: { data?: { ctVal?: string }[] }) => body.data?.[0]?.ctVal,
   },
+  'blofin-perp': {
+    url: (native) => `https://openapi.blofin.com/api/v1/market/instruments?instType=SWAP&instId=${encodeURIComponent(native)}`,
+    coins: (body: { data?: { contractValue?: string }[] }) => body.data?.[0]?.contractValue,
+  },
   'gate-perp': {
     url: (native) => `https://api.gateio.ws/api/v4/futures/usdt/contracts/${encodeURIComponent(native)}`,
     coins: (body: { quanto_multiplier?: string }) => body.quanto_multiplier,

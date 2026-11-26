@@ -36,6 +36,7 @@ pub fn stream_urls(venue: Venue) -> &'static [&'static str] {
         Venue::BitstampSpot | Venue::BitstampPerp => &["wss://ws.bitstamp.net"],
         Venue::BingxSpot => &["wss://open-api-ws.bingx.com/market"],
         Venue::BingxPerp => &["wss://open-api-swap.bingx.com/swap-market"],
+        Venue::BlofinPerp => &["wss://openapi.blofin.com/ws/public"],
         // An index is worked out here: nothing trades on it.
         Venue::Index => &[],
     }
@@ -57,7 +58,7 @@ pub fn subscribe(venue: Venue, symbols: &[String]) -> Vec<String> {
             let args: Vec<String> = symbols.iter().map(|s| format!("\"publicTrade.{s}\"")).collect();
             vec![format!("{{\"op\":\"subscribe\",\"args\":[{}]}}", args.join(","))]
         }
-        Venue::OkxSpot | Venue::OkxPerp => {
+        Venue::OkxSpot | Venue::OkxPerp | Venue::BlofinPerp => {
             let args: Vec<String> = symbols.iter().map(|s| format!("{{\"channel\":\"trades\",\"instId\":\"{s}\"}}")).collect();
             vec![format!("{{\"op\":\"subscribe\",\"args\":[{}]}}", args.join(","))]
         }
@@ -98,9 +99,9 @@ pub fn subscribe(venue: Venue, symbols: &[String]) -> Vec<String> {
 pub fn ping(venue: Venue) -> Option<String> {
     let word = match venue {
         Venue::BybitSpot | Venue::BybitPerp => "{\"op\":\"ping\"}",
-        // OKX and Bitget want the bare word, and close a socket that says
+        // OKX, Bitget and BloFin want the bare word, and close a socket that says
         // nothing for thirty seconds.
-        Venue::OkxSpot | Venue::OkxPerp | Venue::BitgetSpot | Venue::BitgetPerp => "ping",
+        Venue::OkxSpot | Venue::OkxPerp | Venue::BitgetSpot | Venue::BitgetPerp | Venue::BlofinPerp => "ping",
         Venue::HyperliquidPerp | Venue::KrakenSpot => "{\"method\":\"ping\"}",
         Venue::KrakenPerp => "{\"event\":\"ping\"}",
         // Gate leaves a ping without the time unanswered.
@@ -211,6 +212,17 @@ pub fn read_prints<'a>(venue: Venue, frame: &'a Value, into: &mut Vec<Print<'a>>
             let Some(rows) = frame["data"].as_array() else { return };
             for r in rows {
                 let (Some(symbol), Some(price), Some(qty)) = (r["instId"].as_str(), num(&r["px"]), num(&r["sz"])) else { continue };
+                into.push(Print { symbol, price, qty, buy: r["side"] == "buy", at: millis(&r["ts"]) });
+            }
+        }
+        // OKX's frames, with BloFin's names: sizes are contracts, as OKX's swaps' are.
+        Venue::BlofinPerp => {
+            if frame["arg"]["channel"] != "trades" {
+                return;
+            }
+            let Some(rows) = frame["data"].as_array() else { return };
+            for r in rows {
+                let (Some(symbol), Some(price), Some(qty)) = (r["instId"].as_str(), num(&r["price"]), num(&r["size"])) else { continue };
                 into.push(Print { symbol, price, qty, buy: r["side"] == "buy", at: millis(&r["ts"]) });
             }
         }
@@ -504,6 +516,17 @@ mod tests {
         assert_eq!(reply(Venue::BingxSpot, r#"{"ping":"21cdde74","time":"2026-11-18T21:09:56.293+0800"}"#).as_deref(), Some(r#"{"pong":"21cdde74","time":"2026-11-18T21:09:56.293+0800"}"#));
         assert_eq!(subscribe(Venue::BingxPerp, &["BTC-USDT".to_string()]), [r#"{"id":"BTC-USDT","reqType":"sub","dataType":"BTC-USDT@trade"}"#]);
         assert!(gzipped(Venue::BingxSpot) && gzipped(Venue::BingxPerp));
+    }
+
+    // Captured 2026-11-27.
+    #[test]
+    fn blofin_trades_and_pings() {
+        let frame = r#"{"arg":{"channel":"trades","instId":"BTC-USDT"},"data":[{"instId":"BTC-USDT","tradeId":"51792032918","price":"60493.5","size":"7","side":"buy","ts":"1795714410337"}]}"#;
+        assert_eq!(timed_prints(Venue::BlofinPerp, frame), [("BTC-USDT".to_string(), 60_493.5, 7.0, true, 1_795_714_410_337)]);
+        assert!(prints(Venue::BlofinPerp, r#"{"event":"subscribe","arg":{"channel":"trades","instId":"BTC-USDT"}}"#).is_empty());
+        assert!(prints(Venue::BlofinPerp, "pong").is_empty());
+        assert_eq!(subscribe(Venue::BlofinPerp, &["BTC-USDT".to_string()]), [r#"{"op":"subscribe","args":[{"channel":"trades","instId":"BTC-USDT"}]}"#]);
+        assert_eq!(ping(Venue::BlofinPerp).as_deref(), Some("ping"));
     }
 
     #[test]

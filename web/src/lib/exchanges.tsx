@@ -20,8 +20,6 @@ export interface ExchangeDef {
   /** Venues this app can chart, stream and store. */
   live: boolean;
   Logo: Component<LogoProps>;
-  /** Only a partner in Support tradoor: not charted, and not listed among the exchanges. */
-  partner?: boolean;
 }
 
 function Mark(props: LogoProps & { viewBox: string; children: JSX.Element }) {
@@ -74,10 +72,10 @@ export const EXCHANGES: Record<ExchangeId, ExchangeDef> = {
   coinbase: { id: 'coinbase', name: 'Coinbase', live: true, Logo: logo('coinbase') },
   bitstamp: { id: 'bitstamp', name: 'Bitstamp', live: true, Logo: logo('bitstamp') },
   bingx: { id: 'bingx', name: 'BingX', live: true, Logo: logo('bingx') },
-  blofin: { id: 'blofin', name: 'BloFin', live: false, partner: true, Logo: logo('blofin') },
+  blofin: { id: 'blofin', name: 'BloFin', live: true, Logo: logo('blofin') },
 };
 
-export const ALL_EXCHANGES: readonly ExchangeDef[] = Object.values(EXCHANGES).filter((e) => !e.partner);
+export const ALL_EXCHANGES: readonly ExchangeDef[] = Object.values(EXCHANGES);
 export const LIVE_EXCHANGES: readonly ExchangeDef[] = ALL_EXCHANGES.filter((e) => e.live);
 
 export const exchangeOfVenue = (venue: Venue | string): ExchangeDef => EXCHANGES[venue.split('-')[0] as ExchangeId] ?? EXCHANGES.binance;

@@ -19,6 +19,7 @@ pub enum Exchange {
     Coinbase,
     Bitstamp,
     Bingx,
+    Blofin,
     /// Series this server works out itself — the crypto market's total
     /// capitalisation and its parts, and indices such as the VIX — rather
     /// than markets anyone trades.
@@ -68,11 +69,12 @@ pub enum Venue {
     BitstampPerp,
     BingxSpot,
     BingxPerp,
+    BlofinPerp,
     Index,
 }
 
 impl Venue {
-    pub const ALL: [Venue; 27] = [
+    pub const ALL: [Venue; 28] = [
         Self::BinanceSpot,
         Self::BinancePerp,
         Self::BybitSpot,
@@ -99,6 +101,7 @@ impl Venue {
         Self::BitstampPerp,
         Self::BingxSpot,
         Self::BingxPerp,
+        Self::BlofinPerp,
         Self::Index,
     ];
 
@@ -130,6 +133,7 @@ impl Venue {
             Self::BitstampPerp => "bitstamp-perp",
             Self::BingxSpot => "bingx-spot",
             Self::BingxPerp => "bingx-perp",
+            Self::BlofinPerp => "blofin-perp",
             Self::Index => "index",
         }
     }
@@ -162,6 +166,7 @@ impl Venue {
             Self::BitstampPerp => "Bitstamp Perp",
             Self::BingxSpot => "BingX Spot",
             Self::BingxPerp => "BingX Perp",
+            Self::BlofinPerp => "BloFin Perp",
             Self::Index => "Index",
         }
     }
@@ -183,6 +188,7 @@ impl Venue {
             Self::CoinbaseSpot => Exchange::Coinbase,
             Self::BitstampSpot | Self::BitstampPerp => Exchange::Bitstamp,
             Self::BingxSpot | Self::BingxPerp => Exchange::Bingx,
+            Self::BlofinPerp => Exchange::Blofin,
             Self::Index => Exchange::Index,
         }
     }

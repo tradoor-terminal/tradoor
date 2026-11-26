@@ -357,3 +357,20 @@ Deno.test('BingX candles: newest first, put oldest first; an old spot minute pag
   const gone = answering({ code: 100204, msg: 'The maximum query range for BTC_USDT K-lines is 7 days and 0 hours.' });
   assertEquals(await rows(ref('bingx-spot:BTCUSDT'), 'BTC-USDT', '1m', { start: 1700000000000 - 999 * MINUTE, end: 1700000000000 }, 999, gone.getJson, MINUTE), []);
 });
+
+// Frames and answers as BloFin sent them on 2026-11-27.
+Deno.test('BloFin: OKX-shaped candles in coins, asked by its own names, paged as OKX pages', async () => {
+  const bars = read('blofin-perp', [
+    { event: 'subscribe', arg: { channel: 'candle1m', instId: 'BTC-USDT' } },
+    { arg: { channel: 'candle1m', instId: 'BTC-USDT' }, data: [['1795714380000', '60463.9', '60490.3', '60463.8', '60490.1', '118.7', '0.1187', '7178.46011', '0']] },
+  ]);
+  assertEquals(bars, [['candle1m|BTC-USDT', { kind: 'kline', openTime: 1795714380000, open: 60463.9, high: 60490.3, low: 60463.8, close: 60490.1, volume: 0.1187, lastTradeId: 0, closed: false }]]);
+  const p = PROTOCOLS['blofin-perp']!();
+  assertEquals(p.topic({ kind: 'kline', symbol: 'BTC-USDT', interval: '1d' } as never, 'blofin-perp'), 'candle1D|BTC-USDT');
+  assertEquals(p.frames('subscribe', ['candle1H|BTC-USDT']), [{ op: 'subscribe', args: [{ channel: 'candle1H', instId: 'BTC-USDT' }] }]);
+  assertEquals(p.heartbeat, 'ping');
+  assertEquals(restInterval('blofin-perp', '1w'), '1w');
+  const answer = answering({ code: '0', msg: 'success', data: [['1795712400000', '60499.9', '60626.7', '60413.4', '60447.7', '36649', '36.6495', '2218516.73539', '0'], ['1795708800000', '60622.8', '60850.9', '60323.5', '60508.2', '140528', '140.5282', '8511516.77208', '1']] });
+  assertEquals(await rows(ref('blofin-perp:BTCUSDT'), 'BTC-USDT', '1h', { end: 1795712400000 }, 1440, answer.getJson, 3_600_000), [[1795708800000, 60622.8, 60850.9, 60323.5, 60508.2, 140.5282], [1795712400000, 60499.9, 60626.7, 60413.4, 60447.7, 36.6495]]);
+  assertEquals(answer.asked[0], 'https://openapi.blofin.com/api/v1/market/candles?instId=BTC-USDT&bar=1H&limit=1440&after=1795712400001');
+});

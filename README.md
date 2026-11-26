@@ -83,7 +83,7 @@
   <img src="docs/screenshots/exchanges.webp" alt="The symbol search for BTC: fifteen exchanges' marks across the top, and BTC's markets on each of them, spot and perpetual, with price, change and volume, the busiest first" width="100%">
 </p>
 
-Binance, Bybit, OKX, Bitget, Kraken, Hyperliquid, Lighter, Gate, Aster, HTX, Bitfinex, Deribit, Coinbase, Bitstamp and BingX: some 17,700 markets in one search. Also TOTAL, TOTAL2, TOTAL3, BTC.D and the other market measures, the VIX, and the S&amp;P 500 and Nasdaq-100 as trade.xyz perpetuals.
+Binance, Bybit, OKX, Bitget, Kraken, Hyperliquid, Lighter, Gate, Aster, HTX, Bitfinex, Deribit, Coinbase, Bitstamp, BingX and BloFin: some 18,200 markets in one search. Also TOTAL, TOTAL2, TOTAL3, BTC.D and the other market measures, the VIX, and the S&amp;P 500 and Nasdaq-100 as trade.xyz perpetuals.
 
 ### Indicators
 

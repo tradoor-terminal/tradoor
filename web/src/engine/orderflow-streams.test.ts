@@ -185,3 +185,12 @@ Deno.test('bingx: trades in a list or one at a time, m a sale; the whole book ea
   assertEquals(subscribeFrames('bingx-perp', 'prints', 'BTC-USDT').frames, [{ id: 'BTC-USDT@trade', reqType: 'sub', dataType: 'BTC-USDT@trade' }]);
   assertEquals(wholeBook('bingx-perp'), true);
 });
+
+// Frames as BloFin sent them on 2026-11-27.
+Deno.test('blofin: OKX-shaped trades and a book of changes, each naming the one before', () => {
+  assertEquals(readFrame('blofin-perp', { arg: { channel: 'trades', instId: 'BTC-USDT' }, data: [{ instId: 'BTC-USDT', tradeId: '51792032918', price: '60493.5', size: '7', side: 'buy', ts: '1795714410337' }] }), [['trades|BTC-USDT', { kind: 'print', time: 1795714410337, price: 60493.5, qty: 7, buy: true }]]);
+  assertEquals(readFrame('blofin-perp', { arg: { channel: 'books', instId: 'BTC-USDT' }, action: 'update', data: { asks: [['60460.4', '9924']], bids: [], ts: '1795714660533', prevSeqId: '51792073970', seqId: '51792073974' } }), [['books|BTC-USDT', { kind: 'book', reset: false, bids: [], asks: [[60460.4, 9924]], last: 51792073974, prev: 51792073970 }]]);
+  assertEquals(readFrame('blofin-perp', { event: 'subscribe', arg: { channel: 'books', instId: 'BTC-USDT' } }), []);
+  assertEquals(subscribeFrames('blofin-perp', 'book', 'BTC-USDT').frames, [{ op: 'subscribe', args: [{ channel: 'books', instId: 'BTC-USDT' }] }]);
+  assertEquals(wholeBook('blofin-perp'), false);
+});

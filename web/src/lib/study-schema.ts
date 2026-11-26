@@ -248,6 +248,7 @@ const OI_LABELS: Record<(typeof OI_VENUES)[number], string> = {
   'binance-usd': 'Binance USD Perp',
   'bybit-usd': 'Bybit USD Perp',
   'okx-usd': 'OKX USD Perp',
+  'blofin-usdt': 'BloFin USDT Perp',
 };
 
 const PARAMS: Record<string, Record<string, ParamUi>> = {

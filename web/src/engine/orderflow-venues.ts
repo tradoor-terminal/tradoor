@@ -241,6 +241,31 @@ function bingx(urls: string[], spot: boolean): Protocol {
   };
 }
 
+/**
+ * BloFin: OKX's frames with names of its own. Every level, a snapshot then changes,
+ * each change naming the one before it; sizes are contracts, as on a trade.
+ */
+function blofin(urls: string[]): Protocol {
+  return {
+    urls,
+    topic: (spec) => `${spec.kind === 'book' ? 'books' : 'trades'}|${spec.symbol}`,
+    frames: (op, topics) => [{ op, args: topics.map((t) => ({ channel: t.split('|')[0], instId: t.split('|')[1] })) }],
+    read(m, emit) {
+      const arg = m.arg as Json | undefined;
+      if (!arg) return;
+      const topic = `${arg.channel}|${arg.instId}`;
+      if (arg.channel === 'trades' && Array.isArray(m.data)) {
+        for (const t of m.data as Json[]) emit(topic, { kind: 'print', time: num(t.ts), price: num(t.price), qty: num(t.size), buy: t.side === 'buy' });
+      } else if (arg.channel === 'books' && m.data && typeof m.data === 'object') {
+        const d = m.data as Json;
+        const reset = m.action === 'snapshot';
+        emit(topic, book(reset, d.bids, d.asks, { last: num(d.seqId), prev: reset ? undefined : num(d.prevSeqId) }));
+      }
+    },
+    heartbeat: 'ping',
+  };
+}
+
 export const SOCKETS: Record<string, () => Protocol> = {
   'gate-spot': () => gate(['wss://api.gateio.ws/ws/v4/', ...relay('gate-spot')], 'spot'),
   'gate-perp': () => gate(['wss://fx-ws.gateio.ws/v4/ws/usdt', ...relay('gate-perp')], 'futures'),
@@ -257,4 +282,5 @@ export const SOCKETS: Record<string, () => Protocol> = {
   'bitstamp-perp': () => bitstamp(['wss://ws.bitstamp.net', ...relay('bitstamp-perp')]),
   'bingx-spot': () => bingx(['wss://open-api-ws.bingx.com/market', ...relay('bingx-spot')], true),
   'bingx-perp': () => bingx(['wss://open-api-swap.bingx.com/swap-market', ...relay('bingx-perp')], false),
+  'blofin-perp': () => blofin(['wss://openapi.blofin.com/ws/public', ...relay('blofin-perp')]),
 };

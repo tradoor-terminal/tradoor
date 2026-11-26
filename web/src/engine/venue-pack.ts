@@ -1,5 +1,5 @@
 /**
- * The newer exchanges — Gate, Aster, HTX, Bitfinex, Deribit, Coinbase, Bitstamp, BingX: their
+ * The newer exchanges — Gate, Aster, HTX, Bitfinex, Deribit, Coinbase, Bitstamp, BingX, BloFin: their
  * sockets and their candle loaders, in a file of their own, fetched the first
  * time a market on one of them is opened. The engine's worker carries its lazy
  * imports inline (see vite.config), so anywhere else this would be in every
@@ -34,6 +34,9 @@ const BITSTAMP_NAMES: Record<string, string> = { '1m': '60', '5m': '300', '15m':
 
 /** BingX spot's socket names for a bar length; its perpetuals use the chart's own. Spot's days start at 16:00 UTC, so it is not asked for those. */
 const BINGX_SPOT_NAMES: Record<string, string> = { '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '60min', '2h': '2hour', '4h': '4hour' };
+
+/** BloFin's names for a bar length: its bars all start where the chart's do. */
+const BLOFIN_NAMES: Record<string, string> = { '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6H', '12h': '12H', '1d': '1D', '1w': '1W' };
 
 /** Gate's spot week is `7d`, its perpetuals' `1w`: its perpetuals' `7d` starts on a Thursday. */
 const gateName = (venue: Venue, interval: string): string => (venue === 'gate-spot' && interval === '1w' ? '7d' : interval);
@@ -436,6 +439,24 @@ function bingx(urls: string[], spot: boolean): Protocol {
   };
 }
 
+/**
+ * BloFin speaks as OKX does: `{op, args: [{channel, instId}]}`, the bare word `ping`
+ * to stay open, and rows `[ts, o, h, l, c, contracts, coins, quote, confirm]`.
+ */
+function blofin(urls: string[]): Protocol {
+  return {
+    urls,
+    topic: (spec) => (spec.kind === 'kline' ? `candle${BLOFIN_NAMES[spec.interval] ?? spec.interval}|${spec.symbol}` : ''),
+    frames: (op, topics) => [{ op, args: topics.map((t) => ({ channel: t.split('|')[0], instId: t.split('|')[1] })) }],
+    read(m, emit) {
+      const arg = m.arg as Json | undefined;
+      if (!arg || !Array.isArray(m.data)) return;
+      for (const r of m.data as string[][]) emit(`${arg.channel}|${arg.instId}`, bar(num(r[0]), r[1], r[2], r[3], r[4], num(r[6]), r[8] === '1'));
+    },
+    heartbeat: 'ping',
+  };
+}
+
 export const PROTOCOLS: Record<string, () => Protocol> = {
   'gate-spot': () => gate(['wss://api.gateio.ws/ws/v4/', ...relay('gate-spot')], 'spot'),
   'gate-perp': () => gate(['wss://fx-ws.gateio.ws/v4/ws/usdt', ...relay('gate-perp')], 'futures'),
@@ -451,6 +472,7 @@ export const PROTOCOLS: Record<string, () => Protocol> = {
   'bitstamp-perp': () => bitstamp(['wss://ws.bitstamp.net', ...relay('bitstamp-perp')]),
   'bingx-spot': () => bingx(['wss://open-api-ws.bingx.com/market', ...relay('bingx-spot')], true),
   'bingx-perp': () => bingx(['wss://open-api-swap.bingx.com/swap-market', ...relay('bingx-perp')], false),
+  'blofin-perp': () => blofin(['wss://openapi.blofin.com/ws/public', ...relay('blofin-perp')]),
 };
 
 const inRange = (list: Row[], range: Range): Row[] => list.filter((r) => (range.start === undefined || r[0]! >= range.start) && (range.end === undefined || r[0]! <= range.end));
@@ -570,6 +592,14 @@ export async function rows(ref: MarketRef, native: string, interval: string, ran
         if (!Array.isArray(body.data)) return [];
         return inRange(body.data.map((r): Row => [num(r[0]), num(r[1]), num(r[2]), num(r[3]), num(r[4]), num(r[5])]).sort((a, b) => a[0]! - b[0]!), { start: from, end: to });
       });
+    case 'blofin-perp': {
+      // As OKX pages: newest first, `after` the newest wanted plus one, `before` the oldest less one.
+      let url = `https://openapi.blofin.com/api/v1/market/candles?instId=${encodeURIComponent(native)}&bar=${BLOFIN_NAMES[interval] ?? interval}&limit=${limit}&after=${end + 1}`;
+      if (range.start !== undefined) url += `&before=${range.start - 1}`;
+      const body = (await getJson(url)) as { code?: string; msg?: string; data?: string[][] };
+      if (body.code !== '0') throw new Error(body.msg || 'BloFin refused the candle request');
+      return (body.data ?? []).map((r): Row => [num(r[0]), num(r[1]), num(r[2]), num(r[3]), num(r[4]), num(r[6])]).reverse();
+    }
     default:
       throw new Error(`no candle loader for ${ref.venue}`);
   }

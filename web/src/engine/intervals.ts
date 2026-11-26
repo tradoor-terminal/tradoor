@@ -17,6 +17,8 @@ export const INTERVALS: Partial<Record<Venue, Record<string, string>>> = {
   'lighter-perp': { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1h', '4h': '4h', '12h': '12h', '1d': '1d' },
 };
 INTERVALS['okx-perp'] = INTERVALS['okx-spot'];
+/** BloFin's bars all start on UTC boundaries, its weeks on Monday (the same names are in venue-pack). */
+INTERVALS['blofin-perp'] = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '2h': '2H', '4h': '4H', '6h': '6H', '12h': '12H', '1d': '1D', '1w': '1W', '1M': '1M' };
 
 /** What the newer exchanges lack, or start somewhere other than on the chart's boundaries (their names are in venue-pack). */
 const LONG = ['6h', '12h', '1d', '1w', '1M'];

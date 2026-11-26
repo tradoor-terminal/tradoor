@@ -5,7 +5,7 @@
  */
 
 /** The server's venues, in the order the study's `venues` bits count them. */
-export const OI_VENUES = ['binance-usdt', 'bybit-usdt', 'okx-usdt', 'deribit-usd', 'hyperliquid-usd', 'binance-usd', 'bybit-usd', 'okx-usd'] as const;
+export const OI_VENUES = ['binance-usdt', 'bybit-usdt', 'okx-usdt', 'deribit-usd', 'hyperliquid-usd', 'binance-usd', 'bybit-usd', 'okx-usd', 'blofin-usdt'] as const;
 export const OI_ALL = (1 << OI_VENUES.length) - 1;
 
 const MINUTE = 60_000;

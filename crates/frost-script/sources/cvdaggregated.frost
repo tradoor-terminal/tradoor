@@ -25,6 +25,7 @@ input htx = false "HTX"
 input bitfinex = false "Bitfinex"
 input bitstamp = false "Bitstamp"
 input bingx = false "BingX"
+input blofin = false "BloFin"
 input aster = false "Aster"
 input deribit = false "Deribit"
 input lighter = false "Lighter"
@@ -67,10 +68,11 @@ cHtx = exchange(htx, "htx")
 cBitfinex = exchange(bitfinex, "bitfinex")
 cBitstamp = exchange(bitstamp, "bitstamp")
 cBingx = exchange(bingx, "bingx")
+cBlofin = exchange(blofin, "blofin")
 cAster = exchange(aster, "aster")
 cDeribit = exchange(deribit, "deribit")
 cLighter = exchange(lighter, "lighter")
-combined = show == "Each" ? na : nz(cBinance) + nz(cBybit) + nz(cOkx) + nz(cBitget) + nz(cCoinbase) + nz(cHyperliquid) + nz(cKraken) + nz(cGate) + nz(cHtx) + nz(cBitfinex) + nz(cBitstamp) + nz(cBingx) + nz(cAster) + nz(cDeribit) + nz(cLighter)
+combined = show == "Each" ? na : nz(cBinance) + nz(cBybit) + nz(cOkx) + nz(cBitget) + nz(cCoinbase) + nz(cHyperliquid) + nz(cKraken) + nz(cGate) + nz(cHtx) + nz(cBitfinex) + nz(cBitstamp) + nz(cBingx) + nz(cBlofin) + nz(cAster) + nz(cDeribit) + nz(cLighter)
 
 hline(0, "Zero", gray)
 plot(show != "Total" ? cBinance : na, "Binance", #f0b90b)
@@ -85,6 +87,7 @@ plot(show != "Total" ? cHtx : na, "HTX", #1e88e5)
 plot(show != "Total" ? cBitfinex : na, "Bitfinex", #16b157)
 plot(show != "Total" ? cBitstamp : na, "Bitstamp", #8bc34a)
 plot(show != "Total" ? cBingx : na, "BingX", #3f51b5)
+plot(show != "Total" ? cBlofin : na, "BloFin", #ff5722)
 plot(show != "Total" ? cAster : na, "Aster", #f48fb1)
 plot(show != "Total" ? cDeribit : na, "Deribit", #4dd0e1)
 plot(show != "Total" ? cLighter : na, "Lighter", #b0bec5)

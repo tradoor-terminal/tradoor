@@ -2,7 +2,7 @@
 //! lists it, summed, in coins.
 //!
 //! Only some exchanges publish an open interest history, and none of them for
-//! long — Deribit and Hyperliquid publish none at all. So the server records
+//! long — Deribit, Hyperliquid and BloFin publish none at all. So the server records
 //! it: every few seconds it reads each venue's current figure and keeps one row
 //! a minute, and where a venue does keep a five-minute history it backfills the
 //! last month from it. A chart then asks for the sum over the venues it wants,
@@ -63,11 +63,12 @@ pub enum OiVenue {
     BinanceUsd,
     BybitUsd,
     OkxUsd,
+    BlofinUsdt,
 }
 
 impl OiVenue {
     /// Velo's order: stablecoin-margined first, then the coin-margined contracts.
-    pub const ALL: [OiVenue; 8] = [Self::BinanceUsdt, Self::BybitUsdt, Self::OkxUsdt, Self::Deribit, Self::Hyperliquid, Self::BinanceUsd, Self::BybitUsd, Self::OkxUsd];
+    pub const ALL: [OiVenue; 9] = [Self::BinanceUsdt, Self::BybitUsdt, Self::OkxUsdt, Self::Deribit, Self::Hyperliquid, Self::BlofinUsdt, Self::BinanceUsd, Self::BybitUsd, Self::OkxUsd];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -79,6 +80,7 @@ impl OiVenue {
             Self::BinanceUsd => "binance-usd",
             Self::BybitUsd => "bybit-usd",
             Self::OkxUsd => "okx-usd",
+            Self::BlofinUsdt => "blofin-usdt",
         }
     }
 
@@ -92,6 +94,7 @@ impl OiVenue {
             Self::BinanceUsd => "Binance USD Perp",
             Self::BybitUsd => "Bybit USD Perp",
             Self::OkxUsd => "OKX USD Perp",
+            Self::BlofinUsdt => "BloFin USDT Perp",
         }
     }
 
@@ -156,6 +159,7 @@ const BINANCE: &str = "https://fapi.binance.com";
 const BINANCE_COIN: &str = "https://dapi.binance.com";
 const BYBIT: &str = "https://api.bybit.com";
 const OKX: &str = "https://www.okx.com";
+const BLOFIN: &str = "https://openapi.blofin.com";
 const DERIBIT: &str = "https://www.deribit.com";
 const HYPERLIQUID: &str = "https://api.hyperliquid.xyz/info";
 
@@ -182,6 +186,11 @@ pub fn parse_bybit_ticker(v: &Value) -> Option<(f64, f64)> {
 
 pub fn parse_okx_current(v: &Value) -> Option<f64> {
     num(&v["data"][0]["oiCcy"])
+}
+
+/// BloFin's in coins; a market it does not list is a refused `instId`.
+pub fn parse_blofin(v: &Value) -> Option<f64> {
+    num(&v["data"][0]["openInterestCurrency"])
 }
 
 /// Deribit's perpetual is counted in dollars.
@@ -324,6 +333,8 @@ async fn current(http: &Http, venue: OiVenue, coin: &Coin, hyperliquid: &Option<
                 }
                 parse_bybit_ticker(&v).and_then(|(usd, mark)| (mark > 0.0).then(|| usd / mark))
             }
+            // Not in its documentation, but public: it answers without a key.
+            OiVenue::BlofinUsdt => parse_blofin(&http.get(&format!("{BLOFIN}/api/v1/market/open-interest?instId={bare}-USDT")).await?).map(|c| c / coin.mult),
             OiVenue::OkxUsd => {
                 if coin.mult != 1.0 {
                     return Ok(None);
@@ -810,6 +821,10 @@ mod tests {
         assert_eq!(parse_bybit_ticker(&v), Some((30_900.362, 86_800.0)));
         let v: Value = serde_json::from_str(r#"{"code":"0","data":[{"instId":"BTC-USDT-SWAP","oi":"3001119.97","oiCcy":"30011.1997","oiUsd":"2603498584.05"}]}"#).unwrap();
         assert_eq!(parse_okx_current(&v), Some(30_011.1997));
+        // BloFin's, captured 2026-11-27: coins, not its contracts; an unlisted market is refused.
+        let v: Value = serde_json::from_str(r#"{"code":"0","msg":"success","data":[{"instId":"PEPE-USDT","openInterest":"66101","openInterestCurrency":"661010000000","ts":"1795716240000"}]}"#).unwrap();
+        assert_eq!(parse_blofin(&v), Some(661_010_000_000.0));
+        assert_eq!(parse_blofin(&serde_json::from_str(r#"{"code":"152002","msg":"Parameter instId error."}"#).unwrap()), None);
         let v: Value = serde_json::from_str(r#"{"result":[{"instrument_name":"BTC-PERPETUAL","open_interest":851127620,"mark_price":86829.05}]}"#).unwrap();
         assert!((parse_deribit(&v).unwrap() - 9802.337).abs() < 0.01);
         let v: Value = serde_json::from_str(r#"[{"universe":[{"name":"BTC"},{"name":"kPEPE"}]},[{"openInterest":"46244.4424"},{"openInterest":"9"}]]"#).unwrap();
