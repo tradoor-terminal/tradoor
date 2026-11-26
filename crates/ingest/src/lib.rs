@@ -7,7 +7,9 @@
 //! separately, so the three bases cannot disagree with each other.
 #![forbid(unsafe_code)]
 
+use std::collections::HashMap;
 use std::io::Read;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use tradoor_codec::{Period, TickCandles, Tier};
@@ -35,6 +37,8 @@ pub enum IngestError {
     Checksum(String),
     #[error("archive: {0}")]
     Archive(String),
+    #[error("{0}")]
+    Periods(String),
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +76,14 @@ pub struct Ingest {
     http: reqwest::Client,
     data: DataDir,
     config: Config,
+    /// Periods that failed, by "market period": failures so far and when to try
+    /// again, so a broken file is not downloaded on every pass.
+    retry: Mutex<HashMap<String, (u32, i64)>>,
+}
+
+/// How long a period that failed `n` times waits: 20 minutes, doubling, a day at most.
+fn retry_delay(n: u32) -> i64 {
+    ((10 * MINUTE) << n.min(8)).min(DAY)
 }
 
 fn day_periods(from: i64, to: i64) -> impl Iterator<Item = Period> {
@@ -114,6 +126,24 @@ fn dedupe(klines: &mut Vec<OwnedKline>) {
     klines.dedup_by_key(|k| k.open_time);
 }
 
+/// Drops bars that do not open on the interval's grid, returning how many.
+/// Binance's spot archive of ETHUSDT for 2017-12 holds two weeks of bars opened
+/// 20.81 s past each minute, windows REST does not have and that are not
+/// minutes; the minutes they leave are fetched from REST like any other hole.
+fn drop_misaligned(interval: Interval, klines: &mut Vec<OwnedKline>) -> usize {
+    let before = klines.len();
+    klines.retain(|k| interval.align(k.open_time) == k.open_time);
+    before - klines.len()
+}
+
+/// An archive's CSV as ticks, and how many bars were off the grid.
+fn archive_ticks(csv: &str) -> Result<(TickCandles, usize), IngestError> {
+    let mut klines = binance::parse_archive_csv(csv)?;
+    dedupe(&mut klines);
+    let dropped = drop_misaligned(Interval::M1, &mut klines);
+    Ok((to_ticks(Interval::M1, &klines)?, dropped))
+}
+
 impl Ingest {
     pub fn new(data: DataDir, config: Config) -> Result<Self, IngestError> {
         let http = reqwest::Client::builder()
@@ -121,7 +151,46 @@ impl Ingest {
             .timeout(Duration::from_secs(90))
             .build()
             .map_err(|e| IngestError::Http(e.to_string()))?;
-        Ok(Self { http, data, config })
+        Ok(Self { http, data, config, retry: Mutex::new(HashMap::new()) })
+    }
+
+    /// Failures so far of a period still waiting for its next try.
+    fn waiting(&self, key: &str, now: i64) -> Option<u32> {
+        let retry = self.retry.lock().unwrap_or_else(|e| e.into_inner());
+        retry.get(key).filter(|(_, at)| *at > now).map(|(n, _)| *n)
+    }
+
+    /// Note how a period's fetch went: forget it, or push its next try back.
+    fn settle(&self, key: &str, failed: bool, now: i64) {
+        let mut retry = self.retry.lock().unwrap_or_else(|e| e.into_inner());
+        if !failed {
+            retry.remove(key);
+            return;
+        }
+        let n = retry.get(key).map_or(0, |(n, _)| *n) + 1;
+        retry.insert(key.to_string(), (n, now + retry_delay(n)));
+    }
+
+    /// `minutes` for one period, unless it is waiting out earlier failures.
+    /// Neither stops the pass: the period is noted in `failures` and the next
+    /// one is tried.
+    #[allow(clippy::too_many_arguments)]
+    async fn period_minutes(&self, market: &MarketRef, period: Period, lo: i64, hi: i64, now: i64, stats: &mut SyncStats, db: &mut Option<&mut Db>, failures: &mut Vec<String>) -> Option<TickCandles> {
+        let key = format!("{market} {}", period.name());
+        if let Some(n) = self.waiting(&key, now) {
+            failures.push(format!("{}: waiting after {n} failures", period.name()));
+            return None;
+        }
+        let result = self.minutes(market, period, lo, hi, now, stats, db).await;
+        self.settle(&key, result.is_err(), now);
+        match result {
+            Ok(ticks) => Some(ticks),
+            Err(e) => {
+                tracing::warn!(%market, period = %period.name(), error = %e, "period failed, moving on");
+                failures.push(format!("{}: {e}", period.name()));
+                None
+            }
+        }
     }
 
     pub fn data(&self) -> &DataDir {
@@ -182,11 +251,13 @@ impl Ingest {
         .await
         .map_err(|e| IngestError::Archive(e.to_string()))??;
         stats.archives += 1;
-        let mut klines = binance::parse_archive_csv(&csv)?;
-        dedupe(&mut klines);
-        stats.bars_fetched += klines.len() as u64;
-        tracing::info!(%market, period = %period.name(), bars = klines.len(), "archive");
-        Ok(Some(to_ticks(Interval::M1, &klines)?))
+        let (ticks, dropped) = archive_ticks(&csv)?;
+        stats.bars_fetched += ticks.len() as u64;
+        if dropped > 0 {
+            tracing::warn!(%market, period = %period.name(), dropped, "archive bars off the minute dropped");
+        }
+        tracing::info!(%market, period = %period.name(), bars = ticks.len(), "archive");
+        Ok(Some(ticks))
     }
 
     fn rest_base(&self, market: &MarketRef) -> &str {
@@ -228,6 +299,10 @@ impl Ingest {
             };
             klines.retain(|k| k.open_time >= cursor && k.open_time < end);
             dedupe(&mut klines);
+            let dropped = drop_misaligned(interval, &mut klines);
+            if dropped > 0 {
+                tracing::warn!(%market, from = cursor, dropped, "REST bars off the interval dropped");
+            }
             stats.bars_fetched += klines.len() as u64;
             if !klines.is_empty() {
                 parts.push(to_ticks(interval, &klines)?);
@@ -324,24 +399,29 @@ impl Ingest {
             },
         };
 
+        // A period that fails (a bad archive, an exchange error) is skipped and
+        // reported at the end, so the periods after it still get written.
+        let mut failures = Vec::new();
         let mut month = Period::containing(from, Tier::Month);
         while month.start() < today {
             if month.is_closed(now) {
                 if !self.data.exists(market, Interval::M1, month) {
-                    let ticks = self.minutes(market, month, from.max(month.start()), month.end(), now, &mut stats, &mut db).await?;
-                    if !ticks.is_empty() {
-                        self.data.write(market, Interval::M1, month, &ticks)?;
-                        stats.files_written += 1;
-                    }
-                    for day in day_periods(month.start(), month.end()) {
-                        self.data.remove(market, Interval::M1, day)?;
+                    let fetched = self.period_minutes(market, month, from.max(month.start()), month.end(), now, &mut stats, &mut db, &mut failures).await;
+                    if let Some(ticks) = fetched {
+                        if !ticks.is_empty() {
+                            self.data.write(market, Interval::M1, month, &ticks)?;
+                            stats.files_written += 1;
+                        }
+                        for day in day_periods(month.start(), month.end()) {
+                            self.data.remove(market, Interval::M1, day)?;
+                        }
                     }
                 }
             } else {
                 for day in day_periods(from.max(month.start()), today) {
                     if !self.data.exists(market, Interval::M1, day) {
-                        let ticks = self.minutes(market, day, day.start(), day.end(), now, &mut stats, &mut db).await?;
-                        if !ticks.is_empty() {
+                        let fetched = self.period_minutes(market, day, day.start(), day.end(), now, &mut stats, &mut db, &mut failures).await;
+                        if let Some(ticks) = fetched.filter(|t| !t.is_empty()) {
                             self.data.write(market, Interval::M1, day, &ticks)?;
                             stats.files_written += 1;
                         }
@@ -360,6 +440,9 @@ impl Ingest {
             db.sync_partitions(market, &manifest).await?;
         }
         tracing::info!(%market, ?stats, "synced");
+        if !failures.is_empty() {
+            return Err(IngestError::Periods(failures.join("; ")));
+        }
         Ok(stats)
     }
 
@@ -455,6 +538,36 @@ mod tests {
         assert_eq!(missing_ranges(&have, 0, 8 * MINUTE), vec![(0, 2 * MINUTE), (4 * MINUTE, 6 * MINUTE), (7 * MINUTE, 8 * MINUTE)]);
         assert_eq!(interior_gaps(&have), vec![(4 * MINUTE, 6 * MINUTE)]);
         assert_eq!(missing_ranges(&TickCandles::empty(Interval::M1), 0, MINUTE), vec![(0, MINUTE)]);
+    }
+
+    #[test]
+    fn archive_bars_off_the_minute_are_dropped() {
+        // ETHUSDT-1m-2017-12.csv from data.binance.vision, where bars move 20.81 s off the minute.
+        let csv = "1512367140000,465.23000000,465.83000000,464.50000000,464.50000000,11.32535000,1512367199999,5266.29198670,19,4.15400000,1934.46018170,276233.21342833\n\
+                   1512367200000,465.39000000,465.39000000,465.39000000,465.39000000,0.00300000,1512367220809,1.39617000,1,0.00300000,1.39617000,276233.21342833\n\
+                   1512367220810,465.39000000,465.39000000,465.39000000,465.39000000,0.00000000,1512367280809,0.00000000,0,0.00000000,0.00000000,276233.21342833\n\
+                   1512367280810,465.39000000,465.39000000,465.39000000,465.39000000,0.00000000,1512367340809,0.00000000,0,0.00000000,0.00000000,276233.21342833\n\
+                   1512367380000,466.00000000,466.00000000,466.00000000,466.00000000,0.66000000,1512367439999,307.56000000,2,0.66000000,307.56000000,276233.21342833\n";
+        let (ticks, dropped) = archive_ticks(csv).unwrap();
+        assert_eq!(dropped, 2);
+        assert_eq!(ticks.open_time, vec![1512367140000, 1512367200000, 1512367380000]);
+        // The minutes the dropped bars covered are left for REST to fill.
+        assert_eq!(missing_ranges(&ticks, 1512367140000, 1512367440000), vec![(1512367260000, 1512367380000)]);
+    }
+
+    #[test]
+    fn a_failing_period_waits_longer_each_time() {
+        assert_eq!((retry_delay(1), retry_delay(2), retry_delay(20)), (20 * MINUTE, 40 * MINUTE, DAY));
+        let ingest = Ingest::new(DataDir::new("unused"), Config::default()).unwrap();
+        let key = "binance-spot:ETHUSDT 2017-12";
+        assert_eq!(ingest.waiting(key, 0), None);
+        ingest.settle(key, true, 0);
+        assert_eq!(ingest.waiting(key, 19 * MINUTE), Some(1));
+        assert_eq!(ingest.waiting(key, 20 * MINUTE), None);
+        ingest.settle(key, true, 20 * MINUTE);
+        assert_eq!(ingest.waiting(key, 59 * MINUTE), Some(2));
+        ingest.settle(key, false, 60 * MINUTE);
+        assert_eq!(ingest.waiting(key, 60 * MINUTE), None);
     }
 
     #[test]
