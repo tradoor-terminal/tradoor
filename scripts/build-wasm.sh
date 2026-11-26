@@ -33,6 +33,14 @@ if command -v wasm-opt >/dev/null 2>&1; then
   wasm-opt -Oz --converge --strip-target-features --strip-producers --strip-debug --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
     -o web/src/wasm/frost-script/frost-script.wasm web/src/wasm/frost-script/frost-script.wasm
 fi
+# A footprint's minutes read and folded, in the footprint worker: no glue, nothing imported.
+cargo build -p tradoor-footprint-wasm --target wasm32-unknown-unknown --profile wasm
+mkdir -p web/src/wasm/footprint
+cp target/wasm32-unknown-unknown/wasm/tradoor_footprint_wasm.wasm web/src/wasm/footprint/footprint.wasm
+if command -v wasm-opt >/dev/null 2>&1; then
+  wasm-opt -Oz --converge --strip-target-features --strip-producers --strip-debug --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
+    -o web/src/wasm/footprint/footprint.wasm web/src/wasm/footprint/footprint.wasm
+fi
 # The order signer, a module of its own loaded only when someone trades: no glue, nothing imported.
 cargo build -p tradoor-trade-wasm --target wasm32-unknown-unknown --profile wasm
 mkdir -p web/src/wasm/trade
@@ -49,6 +57,6 @@ mkdir -p web/src/wasm/lighter
 GLUE="$(go env GOROOT)/lib/wasm/wasm_exec.js"
 [ -f "$GLUE" ] || GLUE="$(go env GOROOT)/misc/wasm/wasm_exec.js"
 cp "$GLUE" web/src/wasm/lighter/wasm_exec.js
-for f in web/src/wasm/pkg/tradoor_wasm_bg.wasm web/src/wasm/pkg/tradoor_wasm.js web/src/wasm/frost-script/frost-script.wasm web/src/wasm/trade/trade.wasm web/src/wasm/lighter/lighter.wasm; do
+for f in web/src/wasm/pkg/tradoor_wasm_bg.wasm web/src/wasm/pkg/tradoor_wasm.js web/src/wasm/frost-script/frost-script.wasm web/src/wasm/footprint/footprint.wasm web/src/wasm/trade/trade.wasm web/src/wasm/lighter/lighter.wasm; do
   printf '%-45s %8d bytes  %7d gzip\n' "$f" "$(wc -c <"$f")" "$(gzip -9c "$f" | wc -c)"
 done

@@ -1,0 +1,13 @@
+[package]
+name = "tradoor-footprint-wasm"
+description = "A footprint chart's days of minutes, read from the server's JSON bytes and folded into bars, for the browser's footprint worker: no imports."
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tradoor-core.workspace = true

@@ -29,6 +29,12 @@
       "gzip": true
     },
     {
+      "name": "footprint wasm",
+      "path": "dist/assets/footprint-*.wasm",
+      "limit": "13 kB",
+      "gzip": true
+    },
+    {
       "name": "frost script wasm",
       "path": "dist/assets/frost-script-*.wasm",
       "limit": "91 kB",

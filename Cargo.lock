@@ -2656,6 +2656,13 @@ name = "tradoor-core"
 version = "0.9.1"
 
 [[package]]
+name = "tradoor-footprint-wasm"
+version = "0.9.1"
+dependencies = [
+ "tradoor-core",
+]
+
+[[package]]
 name = "tradoor-frost-script"
 version = "0.9.1"
 dependencies = [

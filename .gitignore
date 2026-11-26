@@ -7,6 +7,7 @@ web/node_modules
 web/dist
 web/src/wasm/pkg
 web/src/wasm/frost-script
+web/src/wasm/footprint
 web/src/wasm/trade
 web/src/wasm/lighter
 *.log

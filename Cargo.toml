@@ -25,3 +25,7 @@ codegen-units = 1
 inherits = "release"
 opt-level = "z"
 panic = "abort"
+
+# The footprint fold runs over days of minutes at once: speed before size, for it alone.
+[profile.wasm.package.tradoor-footprint-wasm]
+opt-level = 3
