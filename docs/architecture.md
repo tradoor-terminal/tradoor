@@ -172,6 +172,7 @@ Drawings and workspaces are scoped by the `x-tradoor-owner` header, the browser'
 | `drawing` | hand-drawn markup per browser id (`x-tradoor-owner`) and market, shown on every timeframe; points as `[{time, price}]`, `style` a flat object of settings |
 | `open_interest` | each venue's open interest in coins, a row a minute (backfilled at five minutes where the exchange keeps history), kept 35 days |
 | `alert`, `alert_log` | price alerts per browser id, and each trigger (the last 500); the server follows the active ones' markets and fires them |
+| `telegram_sent` | alert messages sent to Telegram, a count per UTC day, for the status page |
 | `signal_scan`, `signal`, `signal_setup`, `signal_watch`, `signal_backtest_run`, `signal_backtest`, `signal_touch_backtest` | each screener scan, every pattern found (kept with the last scan that saw it, for ninety days, with how it played out), who is told when one turns, and the latest replay of the rules over the history |
 | `flow_minute`, `flow_watch`, `flow_event`, `flow_follow` | net taker flow by the minute for two days, what each reader asks of each market, the crossings they were told about, and the coins each reader follows besides BTC and ETH with when each lapses, none for one followed until stopped |
 | `telegram_chat`, `telegram_link` | chats an alert is sent to, per browser id, and the one-use codes that link them |
@@ -541,10 +542,13 @@ One tab watches, the one holding the `tradoor-alerts` Web Lock; the rest follow
 over a BroadcastChannel and read the list again every half minute. The server
 watches as well (`alert_watch`): every market with an active alert is followed
 on its exchange's public trade stream, so an alert fires with no browser open
-at all — on Binance, Bybit, OKX and Hyperliquid, which between them carry the
-markets alerts are set on; elsewhere the page is still the only watcher. OKX
-and Hyperliquid name their markets their own way, so the catalogue's `native`
-translates both the asking and the answering (`trades`). Both sides record a trigger through the same two statements and the
+at all — on every exchange with a trade stream, which leaves only the indices
+to the page. An exchange no alert names opens no socket; each trade is looked
+up under its market and passed over unless its move from the last price
+reaches one of that market's levels, so a busy market costs a lookup and a
+search of a few sorted levels a trade. Exchanges that name their markets their
+own way have the catalogue's `native` translate both the asking and the
+answering (`trades`). Both sides record a trigger through the same two statements and the
 alert must still be active for them to take, so it fires once however many
 watchers see it. The chart draws each active one as a level to drag or delete:
 with a mouse a click picks it — its ring fills — and only then does a drag

@@ -182,6 +182,9 @@ async fn send_queued(telegram: Arc<Telegram>, mut rx: mpsc::Receiver<(i64, Strin
         match telegram.call("sendMessage", body).await {
             // Only a message the bot can still name can be taken back later.
             Ok(sent) => {
+                if let Err(e) = count_sent(&telegram.pool).await {
+                    tracing::warn!(error = %e, "counting a message sent");
+                }
                 if let (Some(hours), Some(message_id)) = (clear_after, sent["message_id"].as_i64()) {
                     let clear_at = now_ms() + i64::from(hours.clamp(1, MAX_CLEAR_HOURS)) * 3_600_000;
                     if let Err(e) = remember(&telegram.pool, chat_id, message_id, clear_at).await {
@@ -193,6 +196,14 @@ async fn send_queued(telegram: Arc<Telegram>, mut rx: mpsc::Receiver<(i64, Strin
         }
         sleep(SEND_GAP).await;
     }
+}
+
+/// One more alert message sent today, UTC, for the status page.
+async fn count_sent(pool: &deadpool_postgres::Pool) -> anyhow::Result<()> {
+    let day = now_ms().div_euclid(86_400_000) * 86_400_000;
+    let client = pool.get().await?;
+    client.execute("INSERT INTO telegram_sent (day, sent) VALUES ($1, 1) ON CONFLICT (day) DO UPDATE SET sent = telegram_sent.sent + 1", &[&day]).await?;
+    Ok(())
 }
 
 async fn remember(pool: &deadpool_postgres::Pool, chat_id: i64, message_id: i64, clear_at: i64) -> anyhow::Result<()> {

@@ -197,7 +197,8 @@ pub async fn status(State(state): State<AppState>, headers: HeaderMap) -> Respon
     ([(header::CACHE_CONTROL, "no-store")], Json(body)).into_response()
 }
 
-/// Accounts signed in with Telegram and chats linked for alerts, with how long the database took.
+/// Accounts signed in with Telegram, chats linked for alerts, the alerts active and the
+/// alert messages sent, with how long the database took.
 async fn telegram_counts(state: &AppState, now: i64) -> (bool, Option<f64>, Value) {
     let started = Instant::now();
     let day = now - now.rem_euclid(DAY_MS);
@@ -206,17 +207,20 @@ async fn telegram_counts(state: &AppState, now: i64) -> (bool, Option<f64>, Valu
         let row = client
             .query_one(
                 "SELECT (SELECT count(*) FROM account), (SELECT count(*) FROM account WHERE since >= $1),
-                        (SELECT count(*) FROM account WHERE seen_at >= $2), (SELECT count(DISTINCT chat_id) FROM telegram_chat)",
+                        (SELECT count(*) FROM account WHERE seen_at >= $2), (SELECT count(DISTINCT chat_id) FROM telegram_chat),
+                        (SELECT count(*) FROM alert WHERE active),
+                        (SELECT coalesce(sum(sent), 0)::bigint FROM telegram_sent), (SELECT coalesce(sum(sent), 0)::bigint FROM telegram_sent WHERE day = $1)",
                 &[&day, &(now - DAY_MS)],
             )
             .await?;
-        anyhow::Ok((row.get::<_, i64>(0), row.get::<_, i64>(1), row.get::<_, i64>(2), row.get::<_, i64>(3)))
+        let n = |i: usize| row.get::<_, i64>(i);
+        anyhow::Ok((n(0), n(1), n(2), n(3), n(4), n(5), n(6)))
     };
     match read.await {
-        Ok((accounts, today, seen, chats)) => (
+        Ok((accounts, today, seen, chats, active, sent, sent_today)) => (
             true,
             Some((started.elapsed().as_secs_f64() * 10_000.0).round() / 10.0),
-            json!({ "bot": state.telegram.is_some(), "accounts": accounts, "newToday": today, "seen24h": seen, "alertChats": chats }),
+            json!({ "bot": state.telegram.is_some(), "accounts": accounts, "newToday": today, "seen24h": seen, "alertChats": chats, "activeAlerts": active, "alertsSent": sent, "alertsSentToday": sent_today }),
         ),
         Err(e) => {
             tracing::warn!(error = %e, "admin status: the database");

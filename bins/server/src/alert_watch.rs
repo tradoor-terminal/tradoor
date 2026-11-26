@@ -26,34 +26,6 @@ use crate::dns::Doh;
 use crate::telegram::{self, Telegram};
 use crate::trades::{self, stream_urls};
 
-/// The venues whose trades this server follows, and so the ones whose alerts
-/// fire with no browser open: every one but the indices, which nothing trades.
-const VENUES: [Venue; 24] = [
-    Venue::BinanceSpot,
-    Venue::BinancePerp,
-    Venue::BybitSpot,
-    Venue::BybitPerp,
-    Venue::OkxSpot,
-    Venue::OkxPerp,
-    Venue::BitgetSpot,
-    Venue::BitgetPerp,
-    Venue::HyperliquidPerp,
-    Venue::KrakenSpot,
-    Venue::KrakenPerp,
-    Venue::LighterPerp,
-    Venue::GateSpot,
-    Venue::GatePerp,
-    Venue::AsterSpot,
-    Venue::AsterPerp,
-    Venue::HtxSpot,
-    Venue::HtxPerp,
-    Venue::BitfinexSpot,
-    Venue::BitfinexPerp,
-    Venue::DeribitPerp,
-    Venue::CoinbaseSpot,
-    Venue::BitstampSpot,
-    Venue::BitstampPerp,
-];
 /// How often the alerts to watch are read again.
 const REFRESH: Duration = Duration::from_secs(10);
 const RETRY_SECS: [u64; 5] = [1, 3, 5, 10, 30];
@@ -87,7 +59,7 @@ pub struct Watched {
 }
 
 /// Whether a move from `prev` to `cur` meets `condition` at `level`: the rule
-/// the page follows, in TradingView's wording. A cross needs a price on each
+/// the page follows. A cross needs a price on each
 /// side, so the first price only arms it; reaching the level exactly counts.
 pub fn fires(condition: &str, level: f64, prev: Option<f64>, cur: f64) -> bool {
     match condition {
@@ -105,14 +77,22 @@ fn stale(at: i64, now: i64) -> bool {
     at > 0 && now - at > STALE_MS
 }
 
+/// The venues whose trades this server follows, and so the ones whose alerts
+/// fire with no browser open: every one with a trade stream, which leaves out
+/// only the indices, which nothing trades.
+fn venues() -> impl Iterator<Item = Venue> {
+    Venue::ALL.into_iter().filter(|v| !stream_urls(*v).is_empty())
+}
+
 /// Follow every market with an active alert, for as long as the server runs.
+/// An exchange no alert names opens no socket: its task only waits.
 pub fn start(pool: deadpool_postgres::Pool, doh: Arc<Doh>, catalog: Arc<Catalog>, telegram: Option<Arc<Telegram>>) {
     let (tx, rx) = watch::channel(Arc::new(Vec::<Watched>::new()));
     tokio::spawn(refresh(pool.clone(), tx));
-    for venue in VENUES {
+    for venue in venues() {
         tokio::spawn(follow(venue, pool.clone(), doh.clone(), catalog.clone(), telegram.clone(), rx.clone()));
     }
-    tracing::info!(venues = ?VENUES.map(Venue::id), "watching alerts");
+    tracing::info!(venues = ?venues().map(Venue::id).collect::<Vec<_>>(), "watching alerts");
 }
 
 /// The active alerts, read again every few seconds: one added on a phone is
@@ -217,8 +197,10 @@ async fn session(
     let (mut heard, mut traded) = (Instant::now(), Instant::now());
     let mut ping = tokio::time::interval(PING);
     ping.reset();
-    // The price before the last, per symbol: a cross needs a price on each side.
-    let mut previous: HashMap<String, f64> = HashMap::new();
+    // Each market's alerts under the exchange's own name for it, so a trade
+    // costs one lookup, and a trade on a market whose alerts have all gone is
+    // passed over without a look at any.
+    let mut markets = Markets::of(venue, &ours, &alerts.borrow_and_update());
     // Alerts already fired here, so a level that stays met is reported once.
     let mut fired: HashSet<i64> = HashSet::new();
     let mut channels = trades::Channels::default();
@@ -240,20 +222,20 @@ async fn session(
                     ws.send(Message::text(answer)).await?;
                 }
                 let text = channels.named(venue, text);
+                let now = now_ms();
                 for (theirs, price, _, _, at) in trades::timed_prints(venue, &text) {
                     traded = Instant::now();
-                    if stale(at, now_ms()) {
+                    if stale(at, now) {
                         continue;
                     }
-                    let symbol = ours.get(&theirs).cloned().unwrap_or(theirs);
-                    let market = format!("{}:{}", venue.id(), symbol);
-                    let prev = previous.insert(symbol, price);
-                    let due: Vec<Watched> = alerts
-                        .borrow()
-                        .iter()
-                        .filter(|a| a.market == market && !fired.contains(&a.id) && fires(&a.condition, a.price, prev, price))
-                        .cloned()
-                        .collect();
+                    let Some(market) = markets.get_mut(theirs.as_str()) else { continue };
+                    let prev = market.last.replace(price);
+                    // Between the nearest levels nothing can fire: most trades end here.
+                    if !market.may_fire(prev, price) {
+                        continue;
+                    }
+                    market.fresh = false;
+                    let due: Vec<Watched> = market.alerts.iter().filter(|a| !fired.contains(&a.id) && fires(&a.condition, a.price, prev, price)).cloned().collect();
                     for alert in due {
                         fired.insert(alert.id);
                         if let Err(e) = trigger(pool, telegram, &alert, price, prev).await {
@@ -265,9 +247,16 @@ async fn session(
             changed = alerts.changed() => {
                 changed?;
                 let list = alerts.borrow_and_update().clone();
-                if symbols_of(venue, &list) != symbols {
+                let now_wanted = symbols_of(venue, &list);
+                // A market newly wanted needs a subscription, so the socket starts
+                // over; one no longer wanted only goes quiet here, until they are
+                // more than the markets still wanted.
+                let added = now_wanted.iter().any(|s| !symbols.contains(s));
+                let unused = symbols.iter().filter(|s| !now_wanted.contains(s)).count();
+                if added || unused > now_wanted.len() {
                     return Ok(());
                 }
+                markets.refill(venue, &ours, &list);
                 // An alert that is gone from the list has stopped: forget it, so
                 // the same id made active again is watched afresh.
                 fired.retain(|id| list.iter().any(|a| a.id == *id));
@@ -280,6 +269,65 @@ async fn session(
             () = sleep_until(heard + SILENCE) => anyhow::bail!("nothing heard for {} seconds", SILENCE.as_secs()),
             () = sleep_until(traded + NO_TRADES) => anyhow::bail!("no trade in {} seconds", NO_TRADES.as_secs()),
         }
+    }
+}
+
+/// One market's alerts on a socket, and the price before the last.
+struct Market {
+    alerts: Vec<Watched>,
+    /// Their levels, lowest first.
+    levels: Vec<f64>,
+    last: Option<f64>,
+    /// Alerts came or changed since the last trade: the next one looks at all.
+    fresh: bool,
+}
+
+impl Market {
+    /// Whether a move from `prev` to `price` can meet any condition here. A
+    /// level is met only where the move reaches it: a cross needs it between
+    /// the two, and Greater or Less, met before, has fired before. So a move
+    /// that touches no level is passed over, and that is nearly every trade.
+    fn may_fire(&self, prev: Option<f64>, price: f64) -> bool {
+        let Some(prev) = prev else { return true };
+        if self.fresh {
+            return true;
+        }
+        let (lo, hi) = if prev <= price { (prev, price) } else { (price, prev) };
+        let first = self.levels.partition_point(|l| *l < lo);
+        self.levels.get(first).is_some_and(|l| *l <= hi)
+    }
+}
+
+/// A socket's markets, by the exchange's name for each.
+struct Markets(HashMap<String, Market>);
+
+impl Markets {
+    fn of(venue: Venue, ours: &HashMap<String, String>, list: &[Watched]) -> Self {
+        let mut m = Markets(HashMap::new());
+        m.refill(venue, ours, list);
+        m
+    }
+
+    /// The alerts again, each under its market, keeping the prices heard.
+    fn refill(&mut self, venue: Venue, ours: &HashMap<String, String>, list: &[Watched]) {
+        let theirs: HashMap<&str, &str> = ours.iter().map(|(t, o)| (o.as_str(), t.as_str())).collect();
+        for market in self.0.values_mut() {
+            market.alerts.clear();
+        }
+        for a in list.iter().filter(|a| a.venue == venue) {
+            let name = theirs.get(a.symbol.as_str()).copied().unwrap_or(a.symbol.as_str());
+            self.0.entry(name.to_string()).or_insert_with(|| Market { alerts: Vec::new(), levels: Vec::new(), last: None, fresh: true }).alerts.push(a.clone());
+        }
+        self.0.retain(|_, m| !m.alerts.is_empty());
+        for market in self.0.values_mut() {
+            market.levels = market.alerts.iter().map(|a| a.price).collect();
+            market.levels.sort_unstable_by(f64::total_cmp);
+            market.fresh = true;
+        }
+    }
+
+    fn get_mut(&mut self, theirs: &str) -> Option<&mut Market> {
+        self.0.get_mut(theirs)
     }
 }
 
@@ -340,6 +388,37 @@ mod tests {
 
         client.execute("DELETE FROM alert_log WHERE owner = $1", &[&OWNER]).await.unwrap();
         client.execute("DELETE FROM alert WHERE owner = $1", &[&OWNER]).await.unwrap();
+    }
+
+    fn watched(id: i64, venue: Venue, symbol: &str, condition: &str, price: f64) -> Watched {
+        Watched { id, owner: "o".into(), market: format!("{}:{symbol}", venue.id()), venue, symbol: symbol.into(), condition: condition.into(), price }
+    }
+
+    #[test]
+    fn every_traded_venue_is_watched_bingx_and_blofin_too() {
+        let all: Vec<Venue> = venues().collect();
+        assert!(all.contains(&Venue::BingxPerp) && all.contains(&Venue::BingxSpot) && all.contains(&Venue::BlofinPerp));
+        assert!(!all.contains(&Venue::Index), "nothing trades on an index");
+    }
+
+    #[test]
+    fn a_trade_looks_at_its_markets_alerts_only_when_it_reaches_a_level() {
+        let ours: HashMap<String, String> = [("BTC-USDT".to_string(), "BTCUSDT".to_string())].into();
+        let list = [watched(1, Venue::BlofinPerp, "BTCUSDT", "crossing_up", 100.0), watched(2, Venue::BlofinPerp, "BTCUSDT", "less", 90.0), watched(3, Venue::BingxPerp, "BTCUSDT", "greater", 1.0)];
+        let mut markets = Markets::of(Venue::BlofinPerp, &ours, &list);
+        assert!(markets.get_mut("BTCUSDT").is_none(), "kept under BloFin's own name");
+        let m = markets.get_mut("BTC-USDT").expect("the market");
+        assert_eq!((m.alerts.len(), m.levels.as_slice()), (2, &[90.0, 100.0][..]), "another exchange's alert is not here");
+        assert!(m.may_fire(None, 95.0), "a first price is looked at");
+        assert!(m.may_fire(Some(95.0), 96.0), "fresh alerts are looked at once");
+        m.fresh = false;
+        assert!(!m.may_fire(Some(95.0), 96.0), "between the levels nothing can fire");
+        assert!(m.may_fire(Some(99.0), 101.0) && m.may_fire(Some(91.0), 89.0) && m.may_fire(Some(99.0), 100.0), "reaching or passing a level is looked at");
+        assert!(!m.may_fire(Some(101.0), 150.0), "above every level, moving away");
+        markets.refill(Venue::BlofinPerp, &ours, &list[..1]);
+        assert_eq!(markets.get_mut("BTC-USDT").map(|m| (m.levels.clone(), m.fresh)), Some((vec![100.0], true)));
+        markets.refill(Venue::BlofinPerp, &ours, &[]);
+        assert!(markets.get_mut("BTC-USDT").is_none(), "a market whose alerts are gone is dropped");
     }
 
     #[test]

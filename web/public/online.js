@@ -66,6 +66,8 @@
     set('new-today', n(t.newToday));
     set('seen', n(t.seen24h));
     set('chats', n(t.alertChats));
+    set('alerts-active', n(t.activeAlerts));
+    set('alerts-sent', typeof t.alertsSent === 'number' ? `${n(t.alertsSent)} · ${n(t.alertsSentToday)}` : '–');
     const v = s.server ?? {};
     const db = v.db ?? {};
     set('state', db.ok ? '● ok' : '● database not answering', db.ok ? 'ok' : 'bad');
