@@ -732,6 +732,13 @@ input.box:focus { border-color: var(--primary); outline: 0; }
 @container (max-width: 250px) { .wl-row .kind { display: none; } }
 @container (max-width: 180px) { .wl-head, .wl-row { grid-template-columns: minmax(0, 1fr) 72px; } .wl .chg { display: none; } }
 .wl-row .x:hover { color: var(--bear); }
+/* The last price glows the way it moved, eased in and slowly out, in the theme's own up and down colours. */
+.wl-row .num { transition: opacity .4s; }
+.wl-row .last { margin: 0 -4px; padding: 0 4px; border-radius: 2px; transition: background-color .9s ease-out, opacity .4s; }
+.wl-row .last.up { background-color: color-mix(in oklab, var(--bull) 20%, transparent); transition-duration: .25s, .4s; }
+.wl-row .last.down { background-color: color-mix(in oklab, var(--bear) 24%, transparent); transition-duration: .25s, .4s; }
+.wl-row .stale { opacity: .45; }
+@media (prefers-reduced-motion: reduce) { .wl-row .last { transition: none; } }
 .scroll { flex: 1; min-height: 0; overflow: auto; }
 
 .tpo-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--surface); }

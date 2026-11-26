@@ -1,7 +1,7 @@
 /**
  * The current UTC day of a market, live: its daily candle from the exchange's
- * stream. What the watchlist and the values panel read change and volume from,
- * as TradingView does — since 00:00 UTC, not over a rolling 24 hours.
+ * stream. What the watchlist and the values panel read change and volume from:
+ * since 00:00 UTC, not over a rolling 24 hours.
  */
 import { createStore, unwrap } from 'solid-js/store';
 import { StreamHub, type StreamListener } from '../engine/streams';
@@ -23,33 +23,42 @@ const hub = new StreamHub();
 
 const DAY_MS = 86_400_000;
 const SAVE_KEY = 'days';
-/** Days saved this recently are shown on loading; after longer their close says too little. */
-const SAVED_MS = 10 * 60_000;
+/** Saved days older than this are dropped: their close is no longer worth a glance. */
+const KEPT_MS = 7 * DAY_MS;
 /** Trades come in bursts: a market's figures are redrawn this often at most. */
 const TRADE_MS = 250;
 
 function saved(): Record<string, Day> {
   try {
-    const { at, days: kept } = JSON.parse(readPref(SAVE_KEY) ?? '{}') as { at?: number; days?: Record<string, Day> };
+    const { days: kept } = JSON.parse(readPref(SAVE_KEY) ?? '{}') as { days?: Record<string, Day> };
     const now = Date.now();
-    if (!kept || !(now - at! < SAVED_MS)) return {};
-    return Object.fromEntries(Object.entries(kept).filter(([, d]) => now - d.openTime < DAY_MS));
+    return kept ? Object.fromEntries(Object.entries(kept).filter(([, d]) => now - d.openTime < KEPT_MS)) : {};
   } catch {
     return {};
   }
 }
 
 /**
- * The last day seen for each market, kept for the page. A panel that mounts
- * afresh — a tab switched away from and back — reads these rather than showing
- * dashes until the next trade, which on a quiet market is a long wait.
+ * The last day seen for each market, kept for the page and the visit after it.
+ * A panel that mounts afresh — a tab switched back to, the page reloaded — reads
+ * these rather than showing dashes until the exchange's stream says something,
+ * which on a quiet market is a long wait.
  */
 const [days, setDays] = createStore<Record<string, Day>>(saved());
+/** Markets whose day a stream has updated on this page; the others' are a visit's before. */
+const streamed = new Set<string>();
 
 // Kept for the reload that follows: the figures are there before any socket is.
 for (const type of ['pagehide', 'visibilitychange']) addEventListener(type, () => writePref(SAVE_KEY, JSON.stringify({ at: Date.now(), days: unwrap(days) })));
 
-export const dayOf = (market: string): Day | undefined => days[market];
+/** Today's candle as last seen, here or on the visit before. */
+export const dayOf = (market: string): Day | undefined => {
+  const d = days[market];
+  return d && Date.now() - d.openTime < DAY_MS ? d : undefined;
+};
+
+/** The last price seen, today's or not, and whether it came from a stream on this page rather than a visit before. */
+export const lastOf = (market: string): { close: number; live: boolean } | undefined => (days[market] ? { close: days[market]!.close, live: streamed.has(market) } : undefined);
 
 /**
  * Calls `onDay` with each update of today's candle; returns the unsubscribe.
@@ -62,12 +71,13 @@ export function watchDay(market: string, onDay: (day: Day) => void, trades = fal
   const offs: (() => void)[] = [];
   let live = true;
   let latest = 0;
-  let day: Day | undefined = days[market];
+  let day: Day | undefined = dayOf(market);
   let tradeId = -1;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const show = () => {
     clearTimeout(timer);
     timer = undefined;
+    streamed.add(market);
     setDays(market, day!);
     onDay(day!);
   };

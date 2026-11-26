@@ -4,14 +4,18 @@
  * reorders itself — knowing where each symbol sits is the point of a fixed
  * column — but it can be split into sections, flagged and dragged into order.
  *
- * Change and volume are the current daily candle's, as TradingView's are: since
- * 00:00 UTC, not a rolling 24 hours, which is what exchange tickers report.
+ * Change and volume are the current daily candle's: since 00:00 UTC, not a
+ * rolling 24 hours, which is what exchange tickers report.
+ *
+ * A row opens on what the page last knew, a visit before if need be, faded
+ * until its stream speaks; the price then glows the way it moved, fading out
+ * once it rests.
  */
 import { batch, createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { mobile, setOverlay } from '../app/ui';
 import { call } from '../engine/client';
-import { dayOf, watchDay, type Day } from '../lib/day-feed';
+import { dayOf, lastOf, watchDay, type Day } from '../lib/day-feed';
 import { catalog, type Catalog } from '../lib/api';
 import { useDismiss } from '../lib/dismiss';
 import { formatPct, formatPrice, formatVolume, priceDecimals } from '../lib/format';
@@ -27,6 +31,10 @@ interface Row {
   last: number;
   /** The daily candle's, once one has arrived. */
   day: Day | null;
+  /** Figures from before this page's stream: the catalogue's, or a visit before. */
+  stale: boolean;
+  /** The way the price last moved, while it is still moving: 1 up, -1 down. */
+  move: number;
 }
 
 interface Drag {
@@ -41,6 +49,9 @@ interface Drag {
 
 /** How long the pointer rests on a row before its market is fetched. */
 const HOVER_MS = 120;
+
+/** How long a price glows after its last move. */
+const GLOW_MS = 600;
 
 /** How far a press travels before it is a drag rather than a click. */
 const DRAG_PX = 4;
@@ -72,12 +83,21 @@ export function WatchlistPanel(props: { panel: WatchlistPanelState }) {
     if (!c) return;
     for (const m of markets()) {
       const p = c.byMarket.get(m);
-      if (p?.lastPrice != null && !rows[m]) setRows(m, { last: p.lastPrice, day: null });
+      if (p?.lastPrice != null && !rows[m]) setRows(m, { last: p.lastPrice, day: null, stale: true, move: 0 });
     }
   });
 
   // One daily-candle stream per market, kept while the market stays listed.
   const subs = new Map<string, () => void>();
+  const glows = new Map<string, ReturnType<typeof setTimeout>>();
+  const update = (m: string, day: Day) => {
+    const was = rows[m]?.last;
+    const move = was == null || day.close === was ? (rows[m]?.move ?? 0) : day.close > was ? 1 : -1;
+    setRows(m, { last: day.close, day, stale: false, move });
+    if (move === 0 || day.close === was) return;
+    clearTimeout(glows.get(m));
+    glows.set(m, setTimeout(() => setRows(m, 'move', 0), GLOW_MS));
+  };
   createEffect(() => {
     const want = new Set(markets());
     for (const [m, off] of subs) {
@@ -91,15 +111,17 @@ export function WatchlistPanel(props: { panel: WatchlistPanelState }) {
         // What the page already knows, so a panel mounted afresh shows numbers
         // at once rather than dashes until the market trades again.
         const known = dayOf(m);
-        if (known) setRows(m, { last: known.close, day: known });
+        const last = lastOf(m);
+        if (last) setRows(m, { last: last.close, day: known ?? null, stale: !last.live, move: 0 });
         // Off a phone, the price follows every trade as a chart's does; a phone keeps to the lighter candle.
-        subs.set(m, watchDay(m, (day) => setRows(m, { last: day.close, day }), !mobile()));
+        subs.set(m, watchDay(m, (day) => update(m, day), !mobile()));
       }
     }
   });
   onCleanup(() => {
     for (const off of subs.values()) off();
     subs.clear();
+    for (const t of glows.values()) clearTimeout(t);
   });
 
   /** A market under the pointer is fetched before it is clicked. */
@@ -303,7 +325,7 @@ export function WatchlistPanel(props: { panel: WatchlistPanelState }) {
       <div class="wl-head">
         <span>{tl('Symbol')}</span>
         <span class="r">{tl('Last')}</span>
-        <span class="r chg" data-tip="Change since the day's open, 00:00 UTC — as TradingView counts it">
+        <span class="r chg" data-tip="Change since the day's open, 00:00 UTC">
           {tl('Chg%')}
         </span>
         <span class="r vol" data-tip="Volume since 00:00 UTC, in the base coin">
@@ -369,11 +391,15 @@ export function WatchlistPanel(props: { panel: WatchlistPanelState }) {
                   <span class="name">{symbolOf(item)}</span>
                   <span class="kind">{kindLabel(item)}</span>
                 </span>
-                <span class="num r muted">{rows[item] ? formatPrice(rows[item]!.last, digits(item, rows[item]!.last)) : '—'}</span>
-                <span class="num r chg" classList={{ bull: (changePct(rows[item]) ?? 0) > 0, bear: (changePct(rows[item]) ?? 0) < 0, dim: changePct(rows[item]) === null }}>
+                <span class="num r muted last" classList={{ stale: rows[item]?.stale, up: rows[item]?.move === 1, down: rows[item]?.move === -1 }}>
+                  {rows[item] ? formatPrice(rows[item]!.last, digits(item, rows[item]!.last)) : '—'}
+                </span>
+                <span class="num r chg" classList={{ stale: rows[item]?.stale, bull: (changePct(rows[item]) ?? 0) > 0, bear: (changePct(rows[item]) ?? 0) < 0, dim: changePct(rows[item]) === null }}>
                   {formatPct(changePct(rows[item]))}
                 </span>
-                <span class="num r vol muted">{formatVolume(rows[item]?.day?.volume)}</span>
+                <span class="num r vol muted" classList={{ stale: rows[item]?.stale }}>
+                  {formatVolume(rows[item]?.day?.volume)}
+                </span>
                 <button
                   class="x"
                   data-tip="Remove from the watchlist"
