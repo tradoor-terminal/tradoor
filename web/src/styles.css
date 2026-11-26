@@ -1287,6 +1287,7 @@ table.venues tr.off td { color: var(--dim); }
 .ref-card .pair { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 12px; }
 .ref-card .pair a { display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-decoration: none; transition: border-color 0.12s, color 0.12s; }
 .ref-card .pair a svg:last-child { color: var(--dim); }
+.ref-card .pair a:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
 .ref-card .pair a:hover { border-color: color-mix(in oklab, var(--primary) 55%, transparent); color: var(--primary); }
 .ref-card > footer { display: flex; justify-content: flex-end; padding: 4px 6px 6px; }
 .ref-card .later { padding: 4px 6px; color: var(--dim); font-size: .6875rem; }
