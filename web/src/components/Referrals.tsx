@@ -40,24 +40,8 @@ function NadoLogo(props: { size?: number }) {
   );
 }
 
-/** BloFin's mark, from its site, on the black disc every exchange's mark sits on. tradoor does not chart BloFin, so it is not among EXCHANGES. */
-function BlofinLogo(props: { size?: number }) {
-  return (
-    <svg class="xlogo" width={props.size ?? 14} height={props.size ?? 14} viewBox="0 0 256 256" aria-hidden="true">
-      <circle cx="128" cy="128" r="128" fill="#000" />
-      <g transform="translate(72 62) scale(6.5)">
-        <path fill="#FF8800" d="M15.3838 2.94336L11.5385 5.83568L6.83398 9.28805V13.051L16.4455 5.89814C16.4455 5.884 16.4479 5.87104 16.4479 5.85689C16.4479 4.67592 16.0932 3.70592 15.3838 2.94454V2.94336Z" />
-        <path
-          fill="#fff"
-          d="M16.7211 11.9873C16.3982 11.3956 15.9103 10.9218 15.2563 10.5647C15.03 10.4409 14.7802 10.3349 14.5115 10.2417L11.6702 12.3633C11.6702 12.3633 11.6738 12.3656 11.6749 12.3668C12.1015 12.6897 12.316 13.1541 12.316 13.7623C12.316 14.3704 12.1074 14.8584 11.6879 15.1707C11.2696 15.4842 10.6426 15.641 9.80591 15.641H4.46443V4.65512H9.51719C10.1795 4.65512 10.698 4.81659 11.0728 5.13835C11.2931 5.32693 11.4463 5.56029 11.5371 5.83491L15.3824 2.94259C15.1514 2.69508 14.8839 2.46879 14.5775 2.26607C13.3318 1.44104 11.5135 1.02734 9.12595 1.02734H0V19.2959H9.04699C11.6973 19.2959 13.7184 18.8515 15.1137 17.9652C16.5078 17.0777 17.2054 15.7907 17.2054 14.1029C17.2054 13.2849 17.044 12.5813 16.7211 11.9885V11.9873Z"
-        />
-      </g>
-    </svg>
-  );
-}
-
 const exchangeLogo =
-  (id: 'lighter' | 'bybit' | 'binance' | 'okx' | 'bitget' | 'bingx'): Component<{ size?: number }> =>
+  (id: 'lighter' | 'bybit' | 'binance' | 'okx' | 'bitget' | 'blofin' | 'bingx'): Component<{ size?: number }> =>
   (p) => <ExchangeLogo exchange={EXCHANGES[id]} size={p.size} />;
 
 const PARTNERS: readonly Partner[] = [
@@ -81,7 +65,7 @@ const PARTNERS: readonly Partner[] = [
   { name: 'Binance', Logo: exchangeLogo('binance'), url: 'https://www.bmwweb.biz/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_YJYU6&utm_source=referral_entrance' },
   { name: 'OKX', Logo: exchangeLogo('okx'), url: 'https://okx.ac/join/XVG7SEEM' },
   { name: 'Bitget', Logo: exchangeLogo('bitget'), url: 'https://share.bitget.com/u/FX2KU6JL?clacCode=B65S309J' },
-  { name: 'BloFin', Logo: BlofinLogo, url: 'https://blofin.com/register?referral_code=4CYzt5' },
+  { name: 'BloFin', Logo: exchangeLogo('blofin'), url: 'https://blofin.com/register?referral_code=4CYzt5' },
   { name: 'BingX', Logo: exchangeLogo('bingx'), url: 'https://bingxdao.com/invite/WVGO7C/' },
 ];
 
