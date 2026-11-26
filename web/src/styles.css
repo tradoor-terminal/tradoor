@@ -887,7 +887,7 @@ table.venues tr.off td { color: var(--dim); }
   .rangebar.mbar::-webkit-scrollbar { display: none; }
   .rangebar.mbar > * { flex-shrink: 0; }
   .rangebar.mbar .symbol { min-height: 32px; font-size: .875rem; }
-  .rangebar.mbar .sym-btn { gap: 5px; height: 32px; padding: 0 8px 0 6px; border: 1px solid var(--border); background: var(--surface-2); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .rangebar.mbar .sym-btn { gap: 5px; height: 32px; padding: 0 8px 0 6px; background: var(--surface-2); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   .rangebar.mbar .sym-btn:active { background: var(--surface-3); }
   .rangebar.mbar .sym-btn > svg { color: var(--muted); }
   .rangebar.mbar .venue .kind, .rangebar.mbar .venue-name { display: none; }
