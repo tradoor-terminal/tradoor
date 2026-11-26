@@ -897,7 +897,7 @@ table.venues tr.off td { color: var(--dim); }
   .rangebar.mbar .draw-fav { justify-content: center; width: 34px; height: 32px; padding: 0; color: var(--muted); }
   .rangebar.mbar .draw-fav.on { background: var(--primary); color: var(--bg); }
   /* The sheet's button stays as it is: a pencil and the arrow that says it opens upward. */
-  .rangebar.mbar .draw-btn { justify-content: center; gap: 2px; height: 32px; padding: 0 6px; border: 1px solid var(--border); color: var(--text); }
+  .rangebar.mbar .draw-btn { justify-content: center; gap: 2px; height: 32px; padding: 0 6px; color: var(--text); }
   .rangebar.mbar .draw-btn svg:last-child { transform: rotate(180deg); color: var(--muted); }
   .rangebar.mbar .tb:not(.tf-now):not(.draw-btn):not(.draw-fav) { min-height: 30px; padding: 0 6px; font-size: .6875rem; }
   .menu.tf-menu.up { max-height: 60dvh; overflow-y: auto; }
