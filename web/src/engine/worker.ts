@@ -416,16 +416,14 @@ class Slot {
 
   setFormulas(list: FormulaRun[]): void {
     this.formulas = list;
-    for (const id of this.formulasRan) if (!list.some((f) => f.id === id)) this.formulasRan.delete(id);
     this.runFormulas();
   }
 
   /** Hidden layers: a formula hidden stops running, and the markets only it read are let go; shown, it runs at once. */
   setHidden(value: string): void {
     this.engine.set_hidden(value);
-    const was = this.running().length;
     this.hiddenLayers = new Set(value.split(','));
-    if (this.running().length !== was) this.runFormulas();
+    this.runFormulas();
   }
 
   /** The formulas worth running: those shown, and a hidden one the engine has nothing of yet. */
@@ -487,7 +485,7 @@ class Slot {
     const run = this.running();
     if (run.length === 0 || !closed) {
       // The last shown one hidden: the markets it read are not needed now.
-      if (closed) this.others?.keep(new Set());
+      this.others?.keep(new Set());
       return;
     }
     const x = formulaModule();
@@ -548,7 +546,7 @@ class Slot {
 
   /** The forming bar moved: formulas run over it again, but no more often than they can afford. */
   private formulasDue(): void {
-    if (this.freed || this.formulaTimer !== undefined || this.running().length === 0) return;
+    if (this.freed || this.formulas.length === 0 || this.formulaTimer !== undefined) return;
     const wait = this.formulasAt + Math.max(FORMULA_MS, 4 * this.formulaCost) - performance.now();
     this.formulaTimer = setTimeout(() => this.runFormulas(), Math.max(0, wait));
   }
