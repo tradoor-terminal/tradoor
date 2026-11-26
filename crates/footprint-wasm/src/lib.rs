@@ -13,8 +13,11 @@
 //! fp_clear()                         start again
 //! fp_alloc(len) -> ptr               room for an answer's bytes, then
 //! fp_add(ptr, len) -> tick           read: its tick, 0 when it names none, -1 when it is not one
+//! fp_add_minutes(ptr, count, tick)   or minutes as numbers, `count` of them (a browser's own
+//!                                    recordings): time, levels, then price, bought, sold a level
 //! fp_free(ptr, len)
-//! fp_fold(bar_ms, usd, ticks) -> n   fold what was read; -1 when it cannot
+//! fp_fold(bar_ms, usd, ticks, by) -> n   fold what was read, `by` ticks a row or 0 to work it
+//!                                    out; -1 when it cannot
 //! fp_out() -> ptr                    n numbers: grid, fitted, by, bars, then a bar each as
 //!                                    time, rows, most delta, least delta, then price, bought, sold a row
 //! ```
@@ -345,9 +348,32 @@ impl Minutes {
         Some(tick.max(0.0))
     }
 
-    /// Folded into bars of `bar_ms`, as fp-fold.ts `foldMinutes` does with no grouping given:
+    /// Minutes as numbers: a minute's time, its count of levels, then price, bought and sold a level.
+    /// False, adding nothing, where they do not add up.
+    pub fn add_numbers(&mut self, f: &[f64], tick: f64) -> bool {
+        let mark = (self.minutes.len(), self.levels.len());
+        let mut i = 0;
+        while i + 2 <= f.len() {
+            let n = f[i + 1];
+            if !(n >= 0.0) || i + 2 + n as usize * 3 > f.len() {
+                self.minutes.truncate(mark.0);
+                self.levels.truncate(mark.1);
+                return false;
+            }
+            let n = n as usize;
+            self.minutes.push((f[i], self.levels.len() / 3, n));
+            self.levels.extend_from_slice(&f[i + 2..i + 2 + n * 3]);
+            i += 2 + n * 3;
+        }
+        if tick > 0.0 && self.tick <= 0.0 {
+            self.tick = tick;
+        }
+        i == f.len()
+    }
+
+    /// Folded into bars of `bar_ms`, as fp-fold.ts `foldMinutes` does, `by` ticks a row where given:
     /// grid, fitted, by, bars, then each bar. `None` where a bar spans too many ticks.
-    pub fn fold(&self, bar_ms: f64, usd: bool, ticks: f64) -> Option<Vec<f64>> {
+    pub fn fold(&self, bar_ms: f64, usd: bool, ticks: f64, by: Option<i64>) -> Option<Vec<f64>> {
         let tick = if self.tick > 0.0 { self.tick } else { 1.0 };
         let bar_ms = bar_ms as i64;
         if bar_ms <= 0 {
@@ -422,8 +448,9 @@ impl Minutes {
 
         // One grouping for the lot, from a bar in the middle of the pack rather than the wildest.
         let fitted = !(ticks > 0.0);
-        let mut by = if fitted { 1 } else { (ticks + 0.5).floor().max(1.0) as i64 };
-        if fitted {
+        let given = by.filter(|b| *b > 0);
+        let mut by = given.unwrap_or(if fitted { 1 } else { (ticks + 0.5).floor().max(1.0) as i64 });
+        if fitted && given.is_none() {
             let mut spans: Vec<i64> = bars.iter().map(|b| b.steps.last().map_or(0, |l| l.0 - b.steps[0].0 + 1)).collect();
             tradoor_core::sort::heap_sort_by(&mut spans, |a, b| a < b);
             let typical = spans.get(spans.len() * 4 / 5).copied().unwrap_or(0) as f64;
@@ -514,9 +541,17 @@ pub unsafe extern "C" fn fp_add(ptr: *const u8, len: usize) -> f64 {
     HELD.with_borrow_mut(|m| m.add(bytes)).unwrap_or(-1.0)
 }
 
+/// # Safety
+/// `ptr` holds `count` numbers the page wrote.
 #[unsafe(no_mangle)]
-pub extern "C" fn fp_fold(bar_ms: f64, usd: u32, ticks: f64) -> i32 {
-    match HELD.with_borrow(|m| m.fold(bar_ms, usd != 0, ticks)) {
+pub unsafe extern "C" fn fp_add_minutes(ptr: *const f64, count: usize, tick: f64) -> i32 {
+    let f = unsafe { std::slice::from_raw_parts(ptr, count) };
+    i32::from(HELD.with_borrow_mut(|m| m.add_numbers(f, tick)))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn fp_fold(bar_ms: f64, usd: u32, ticks: f64, by: f64) -> i32 {
+    match HELD.with_borrow(|m| m.fold(bar_ms, usd != 0, ticks, (by >= 1.0).then_some(by as i64))) {
         Some(out) => {
             let n = out.len() as i32;
             OUT.with_borrow_mut(|o| *o = out);
@@ -552,7 +587,7 @@ mod tests {
         let mut m = Minutes::default();
         let tick = m.add(br#"{"bars":[{"at":60000,"levels":[[100.0,1.5,0.5],[101.0,0.25,1e-1]],"trades":3},{"at":0,"trades":1,"levels":[[100.0,1,0],[102.0,0,2.5]]}],"market":"x","tick":1.0}"#);
         assert_eq!(tick, Some(1.0));
-        let out = m.fold(300_000.0, false, 0.0).unwrap();
+        let out = m.fold(300_000.0, false, 0.0, None).unwrap();
         assert_eq!(&out[..4], &[1.0, 1.0, 1.0, 1.0], "grid, fitted, by, one bar");
         let b = bars(&out);
         // Minute 0 first (sorted): net 1 - 2.5 = -1.5; then +1.0 + 0.15 = -0.35.
@@ -565,10 +600,24 @@ mod tests {
     fn rows_are_grouped_by_the_ticks_asked_for_and_dollars_weigh_the_row_price() {
         let mut m = Minutes::default();
         m.add(br#"{"tick":0.5,"bars":[{"at":0,"levels":[[10.0,1,0],[10.5,1,0],[11.0,0,1],[12.0,2,0]]}]}"#).unwrap();
-        let out = m.fold(60_000.0, true, 4.0).unwrap();
+        let out = m.fold(60_000.0, true, 4.0, None).unwrap();
         assert_eq!(&out[..4], &[2.0, 0.0, 4.0, 1.0]);
         // Steps 20, 21, 22, 24 by 4: rows 20 (10.0) and 24 (12.0).
         assert_eq!(bars(&out)[0].1, vec![[10.0, 20.0, 10.0], [12.0, 24.0, 0.0]]);
+    }
+
+    #[test]
+    fn minutes_as_numbers_fold_as_the_json_does_and_a_given_grouping_is_kept() {
+        let mut a = Minutes::default();
+        a.add(br#"{"tick":1,"bars":[{"at":0,"levels":[[100.0,1,0],[103.0,0,2]]},{"at":60000,"levels":[[101.0,0.5,0.25]]}]}"#).unwrap();
+        let mut b = Minutes::default();
+        assert!(b.add_numbers(&[0.0, 2.0, 100.0, 1.0, 0.0, 103.0, 0.0, 2.0, 60_000.0, 1.0, 101.0, 0.5, 0.25], 1.0));
+        assert_eq!(a.fold(300_000.0, false, 0.0, None), b.fold(300_000.0, false, 0.0, None));
+        let out = b.fold(300_000.0, false, 0.0, Some(2)).unwrap();
+        assert_eq!(&out[..3], &[2.0, 1.0, 2.0], "a grouping given is kept, the grid still fitted");
+        assert_eq!(bars(&out)[0].1, vec![[100.0, 1.5, 0.25], [102.0, 0.0, 2.0]]);
+        assert!(!b.add_numbers(&[0.0, 5.0, 1.0], 1.0), "five levels promised, none given");
+        assert_eq!(b.minutes.len(), 2);
     }
 
     #[test]
@@ -576,7 +625,7 @@ mod tests {
         let mut m = Minutes::default();
         let levels: Vec<String> = (0..450).map(|i| format!("[{}.0,1,0]", 1000 + i)).collect();
         m.add(format!(r#"{{"tick":1,"bars":[{{"at":0,"levels":[{}]}}]}}"#, levels.join(",")).as_bytes()).unwrap();
-        let out = m.fold(60_000.0, false, 0.0).unwrap();
+        let out = m.fold(60_000.0, false, 0.0, None).unwrap();
         assert_eq!(out[2], 5.0, "450 rows: by 2 is 225, by 5 is 90");
         assert_eq!(m.add(br#"{"tick":1,"bars":[{"at":5,"levels":[[1,2"#), None);
         assert_eq!(m.minutes.len(), 1, "half an answer added nothing");

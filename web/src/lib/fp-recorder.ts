@@ -12,7 +12,7 @@
  */
 import { createSignal } from 'solid-js';
 import { digitsFor } from './alerts';
-import { foldMinutes, recordedMarkets, type Footprint, type Minute, type Settings } from './footprint';
+import { foldMinutes, foldRecorded, recordedMarkets, type Footprint, type Minute, type Settings } from './footprint';
 import type { Filling, Stopped } from './fp-fill';
 import { cover, levelFor, merge, MINUTE, MinuteBook, pack, toMinute, trimSpans, unpack, type Levels } from './fp-minutes';
 import { addMinutes, forget, prune, readMarket, readMinutes, writeMarket, type MarketRecord } from './fp-store';
@@ -293,12 +293,30 @@ export async function recordedFootprint(market: string, barMs: number, from: num
   if (!meta || !(meta.level > 0)) return null;
   const minutes: [number, Levels][] = await readMinutes(market, from, Date.now()).catch(() => []);
   // The minutes not written down yet; a stretch of one an earlier recording kept, is.
+  const kept = new Map(minutes.map(([at], i) => [at, i]));
   for (const [at, levels] of live.get(market) ?? []) {
     if (at < from) continue;
-    const i = minutes.findIndex(([m]) => m === at);
-    if (i >= 0) minutes[i] = [at, merge(minutes[i]![1], levels)];
+    const i = kept.get(at);
+    if (i !== undefined) minutes[i] = [at, merge(minutes[i]![1], levels)];
     else minutes.push([at, levels]);
   }
+  // Folded in the footprint's worker, in Rust, as the server's minutes are; on the page where it cannot be.
+  let count = 0;
+  for (const [, levels] of minutes) count += 2 + levels.size * 3;
+  const flat = new Float64Array(count);
+  let o = 0;
+  for (const [at, levels] of minutes) {
+    flat[o++] = at;
+    flat[o++] = levels.size;
+    for (const [step, [buy, sell]] of levels) {
+      flat[o++] = step * meta.level;
+      flat[o++] = buy;
+      flat[o++] = sell;
+    }
+  }
+  const away = foldRecorded(flat, meta.level, barMs, settings, by);
+  const fp = away && (await away.catch(() => null));
+  if (fp) return fp;
   const folded: Minute[] = minutes.map(([at, levels]) => toMinute(at, levels, meta.level));
   return foldMinutes(folded, meta.level, barMs, settings, by);
 }

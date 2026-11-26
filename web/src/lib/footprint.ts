@@ -75,7 +75,7 @@ export async function fetchFootprint(market: string, barMs: number, from: number
   for (let start = Math.max(from, to - maxPages * page); start < to; start += page) spans.push([start, Math.min(start + page - 1, to)]);
   // Read and folded in a worker of its own, so the page does not stop for it; here only where none can start.
   const paths = spans.map(([a, b]) => `/api/footprint?market=${encodeURIComponent(market)}&from=${Math.round(a)}&to=${Math.round(b)}`);
-  const off = foldAway(paths, barMs, settings);
+  const off = foldAway({ paths }, barMs, settings);
   if (off) {
     try {
       return await off;
@@ -94,7 +94,15 @@ let asked = 0;
 const waiting = new Map<number, { done: (fp: Footprint) => void; failed: (e: unknown) => void }>();
 const WORKER_DOWN = new Error('the footprint worker did not start');
 
-function foldAway(paths: string[], barMs: number, settings: Settings): Promise<Footprint> | null {
+/**
+ * A browser's own recorded minutes folded in the same worker: `minutes` as its numbers say
+ * (fp-fold-worker.ts), handed over, not copied. Null where no worker can run: the page folds them.
+ */
+export function foldRecorded(minutes: Float64Array<ArrayBuffer>, tick: number, barMs: number, settings: Settings, by?: number): Promise<Footprint & { by: number }> | null {
+  return foldAway({ minutes, tick, by }, barMs, settings, [minutes.buffer]) as Promise<Footprint & { by: number }> | null;
+}
+
+function foldAway(what: { paths: string[]; headers?: never } | { minutes: Float64Array; tick: number; by?: number }, barMs: number, settings: Settings, transfer: Transferable[] = []): Promise<Footprint> | null {
   if (folder === undefined) {
     try {
       folder = new Worker(new URL('./fp-fold-worker.ts', import.meta.url), { type: 'module', name: 'tradoor-footprint' });
@@ -120,7 +128,7 @@ function foldAway(paths: string[], barMs: number, settings: Settings): Promise<F
   const worker = folder;
   return new Promise((done, failed) => {
     waiting.set(id, { done, failed });
-    worker.postMessage({ id, paths, headers: authHeaders(), barMs, settings });
+    worker.postMessage({ id, ...what, ...('paths' in what ? { headers: authHeaders() } : {}), barMs, settings }, transfer);
   });
 }
 
