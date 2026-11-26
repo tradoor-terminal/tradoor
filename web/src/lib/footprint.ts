@@ -215,10 +215,31 @@ function coarser(by: number): number {
 /** The flat array the engine reads: per bar, its time, its row count, the most
  *  and least its delta reached, its rows. */
 export function flatten(bars: Levels[]): Float64Array {
-  const flat: number[] = [];
-  for (const bar of bars) {
-    flat.push(bar.time, bar.levels.length, bar.maxDelta, bar.minDelta);
-    for (const [price, buy, sell] of bar.levels) flat.push(price, buy, sell);
+  // A bar unchanged since the last time is the same object: its part is kept, and only the bar
+  // under way is written afresh. Days of bars twice a second held the page up otherwise.
+  const parts = bars.map((bar) => {
+    let part = flatParts.get(bar);
+    if (!part) {
+      part = new Float64Array(4 + 3 * bar.levels.length);
+      part.set([bar.time, bar.levels.length, bar.maxDelta, bar.minDelta]);
+      let i = 4;
+      for (const [price, buy, sell] of bar.levels) {
+        part[i++] = price;
+        part[i++] = buy;
+        part[i++] = sell;
+      }
+      flatParts.set(bar, part);
+    }
+    return part;
+  });
+  const flat = new Float64Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    flat.set(part, at);
+    at += part.length;
   }
-  return Float64Array.from(flat);
+  return flat;
 }
+
+/** Each bar's part of `flatten`, for as long as the bar is held. */
+const flatParts = new WeakMap<Levels, Float64Array>();

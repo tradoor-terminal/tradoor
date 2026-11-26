@@ -566,12 +566,28 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         const bar = minutes.length > 0 ? foldMinutes(minutes, tick, barMs, settings, Math.max(1, Math.round(grid / tick))).bars.find((b) => b.time === barStart) : undefined;
         bars = seen.over(shown, bar, barStart);
       }
-      send({ t: 'footprint', id: sid, flat: flatten(bars), grid, fitted });
+      // The bars the worker already holds as they are, on the same grid, are not sent again:
+      // twice a second, days of them were copied for the one bar under way.
+      let same = 0;
+      if (grid === sentGrid && fitted === sentFitted) while (same < bars.length && same < sent.length && bars[same] === sent[same]) same += 1;
+      const flat = flatten(bars.slice(same));
+      send({ t: 'footprint', id: sid, flat, grid, fitted, keep: sentAt[same] ?? 0 }, [flat.buffer]);
+      sentAt.length = same + 1;
+      for (let i = same; i < bars.length; i++) sentAt[i + 1] = sentAt[i]! + 4 + 3 * bars[i]!.levels.length;
+      [sent, sentGrid, sentFitted] = [bars, grid, fitted];
     };
+    let sent: Levels[] = [];
+    let sentGrid = 0;
+    let sentFitted = true;
+    /** Where each sent bar starts in what the worker holds. */
+    const sentAt = [0];
+    // The rows' grouping the last whole load fitted: a refresh folds its few bars onto the same grid.
+    let by = 0;
     const load = (span: number, asked = Date.now()) =>
       fetchFootprint(market_, barMs, span === days ? from : asked - span * 86_400_000, asked, settings, span).then(
         (fp) => {
           if (dropped) return;
+          if ('by' in fp && typeof fp.by === 'number') by = fp.by;
           seen.answered(fp.bars, asked);
           let bars = fp.bars;
           if (flow) {
@@ -587,7 +603,27 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         () => setFpLoading(false),
       );
     void load(days);
-    const timer = setInterval(() => void load(flow && !hours ? 1 : days), flow || hours ? 60_000 : 20_000);
+    // A chart of minutes is brought up to date by its last two bars alone: the
+    // days of minutes refetched and refolded every twenty seconds held the page
+    // up for a quarter to three quarters of a second each time. The whole is
+    // read again now and then, which also fits its grid afresh.
+    let refreshes = 0;
+    const recent = async (asked = Date.now()) => {
+      const since = Math.floor(asked / barMs) * barMs - barMs;
+      const answer = await api.footprint(market_, since, asked).catch(() => null);
+      if (!answer || dropped || by === 0) return;
+      const fresh = foldMinutes(answer.bars.map((b) => ({ at: b.at, levels: b.levels })), answer.tick > 0 ? answer.tick : grid / by, barMs, settings, by).bars;
+      const kept = new Map(shown.map((b) => [b.time, b] as const));
+      for (const bar of fresh) kept.set(bar.time, bar);
+      shown = [...kept.values()].sort((a, b) => a.time - b.time);
+      seen.answered(fresh, asked);
+      draw();
+    };
+    const timer = setInterval(() => {
+      refreshes += 1;
+      if (!flow && !hours && by > 0 && refreshes % 30 !== 0) void recent();
+      else void load(flow && !hours ? 1 : days);
+    }, flow || hours ? 60_000 : 20_000);
     let offPrints = () => {};
     let tailTimer: ReturnType<typeof setInterval> | undefined;
     if (book) {

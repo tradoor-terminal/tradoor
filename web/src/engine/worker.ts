@@ -265,6 +265,8 @@ class Slot {
   private demo: ReturnType<typeof setInterval> | undefined;
   /** Its tab is not shown: nothing is drawn, everything else carries on. */
   hidden = false;
+  /** The footprint as last handed in: a later one may keep the start of it (`keep`) and send the rest. */
+  fp = new Float64Array();
   /** The ticker's perpetual on each exchange, whose liquidations the feed shows. */
   private liquidationMarkets: string[] = [];
   private liquidationKey = '';
@@ -272,6 +274,10 @@ class Slot {
   private studies = '';
   /** The reader's formulas on this chart, and the closed bars the engine last had, which they run over. */
   private formulas: FormulaRun[] = [];
+  /** The legend's hidden layers: a formula among them is run once, for its legend, and then left alone. */
+  private hiddenLayers = new Set<string>();
+  /** Formulas the engine holds a run of, so a hidden one keeps its legend. */
+  private formulasRan = new Set<string>();
   private formulaBars: FormulaBars | null = null;
   /** The forming bar as the engine last had it, which formulas run over too. */
   private liveBar: Bar | null = null;
@@ -410,7 +416,21 @@ class Slot {
 
   setFormulas(list: FormulaRun[]): void {
     this.formulas = list;
+    for (const id of this.formulasRan) if (!list.some((f) => f.id === id)) this.formulasRan.delete(id);
     this.runFormulas();
+  }
+
+  /** Hidden layers: a formula hidden stops running, and the markets only it read are let go; shown, it runs at once. */
+  setHidden(value: string): void {
+    this.engine.set_hidden(value);
+    const was = this.running().length;
+    this.hiddenLayers = new Set(value.split(','));
+    if (this.running().length !== was) this.runFormulas();
+  }
+
+  /** The formulas worth running: those shown, and a hidden one the engine has nothing of yet. */
+  private running(): FormulaRun[] {
+    return this.formulas.filter((f) => !this.hiddenLayers.has(f.id) || !this.formulasRan.has(f.id));
   }
 
   private keepFormulas(): void {
@@ -464,7 +484,12 @@ class Slot {
     this.formulaTimer = undefined;
     this.keepFormulas();
     const closed = this.formulaBars;
-    if (this.formulas.length === 0 || !closed) return;
+    const run = this.running();
+    if (run.length === 0 || !closed) {
+      // The last shown one hidden: the markets it read are not needed now.
+      if (closed) this.others?.keep(new Set());
+      return;
+    }
     const x = formulaModule();
     if (!x) {
       void formulaReady().then(() => this.runFormulas(), () => undefined);
@@ -478,13 +503,15 @@ class Slot {
     const others = this.others?.held.size ? this.others.columns(bars.time) : null;
     const [wanted, read] = [new Set<string>(), new Set<string>()];
     let failed = false;
-    for (const f of this.formulas) {
+    for (const f of run) {
       const out = runFormula(x, f.source, f.inputs, bars, this.engine.precision(), others);
+      this.formulasRan.add(f.id);
       if ('error' in out) {
         failed = true;
         this.engine.set_formula(f.id, f.label, out.error, EMPTY, false);
       } else {
-        othersOf(out.meta, wanted, read);
+        // A hidden one, run for its legend, asks for no market.
+        if (!this.hiddenLayers.has(f.id)) othersOf(out.meta, wanted, read);
         this.engine.set_formula(f.id, labelOf(out.meta, f.label), out.meta, out.values, live);
       }
     }
@@ -521,7 +548,7 @@ class Slot {
 
   /** The forming bar moved: formulas run over it again, but no more often than they can afford. */
   private formulasDue(): void {
-    if (this.freed || this.formulas.length === 0 || this.formulaTimer !== undefined) return;
+    if (this.freed || this.formulaTimer !== undefined || this.running().length === 0) return;
     const wait = this.formulasAt + Math.max(FORMULA_MS, 4 * this.formulaCost) - performance.now();
     this.formulaTimer = setTimeout(() => this.runFormulas(), Math.max(0, wait));
   }
@@ -678,6 +705,8 @@ class Slot {
     this.gen += 1;
     this.others?.keep(new Set());
     this.others = null;
+    // Another market's bars: a hidden formula's run is of the last one's.
+    this.formulasRan.clear();
     for (const fn of this.cleanup.splice(0)) fn();
     clearTimeout(this.owedTimer);
     this.owedTimer = undefined;
@@ -1585,7 +1614,7 @@ function handle(msg: ToWorker): void {
       void slot.deepen(msg.bars);
       break;
     case 'hidden':
-      slot.engine.set_hidden(msg.value);
+      slot.setHidden(msg.value);
       slot.markMeta();
       break;
     case 'studyStyles':
@@ -1623,9 +1652,13 @@ function handle(msg: ToWorker): void {
     case 'alerts':
       slot.engine.set_alerts(Float64Array.from(msg.list.flatMap((a) => [a.id, a.price, rgba(a.style?.color), DASHES[a.style?.dash ?? ''] ?? 0, a.style?.width ?? 0])));
       break;
-    case 'footprint':
-      slot.engine.set_footprint(msg.flat, msg.grid, msg.fitted);
+    case 'footprint': {
+      const f = new Float64Array((msg.keep ??= 0) + msg.flat.length);
+      f.set(slot.fp.subarray(0, msg.keep));
+      f.set(msg.flat, msg.keep);
+      slot.engine.set_footprint((slot.fp = f), msg.grid, msg.fitted);
       break;
+    }
     case 'footprintShown':
       slot.engine.set_footprint_shown(msg.value);
       break;
