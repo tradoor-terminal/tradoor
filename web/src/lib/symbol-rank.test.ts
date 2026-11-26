@@ -108,3 +108,9 @@ Deno.test('a group keeps its own markets, and a currency pair is no stablecoin t
   assertEquals(symbols('forex').sort(), ['EURGBP', 'EURUSD']);
   assertEquals(symbols('all').includes('USDCUSDT'), false);
 });
+
+Deno.test('every match is returned, not the first hundred', () => {
+  const many = Array.from({ length: 250 }, (_, i) => market('binance-perp', `C${i}USDT`, `C${i}`, 'USDT', 1000 - i));
+  assertEquals(rank(many, '', 'all', null, 'popular', popularity(many)).length, 250);
+  assertEquals(rank(many, 'C', 'all', null, 'popular', popularity(many)).length, 250);
+});

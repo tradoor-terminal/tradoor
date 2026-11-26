@@ -74,6 +74,7 @@ function perCoin(list: Product[]): Product[] {
  * coin trades everywhere, then by the market's own turnover — so "SO" is SOL
  * before SONIC, and BTC's most traded market leads its others. With nothing
  * typed, each coin shows once, the most traded first; or the day's movers.
+ * Every match is returned: the picker draws them a page at a time.
  * Words like "bybit" or "perp" in the query filter instead of matching, and
  * TradingView's spelling works too: `BYBIT:XPLUSDT.P` is Bybit's perpetual.
  */
@@ -125,14 +126,13 @@ export function rank(
   if (sort !== 'popular') {
     const movers = perCoin(scored.map((s) => s[2]).filter((p) => DOLLARS.has(p.quote) && !stable(p) && (p.quoteVolume24h ?? 0) >= MOVER_MIN_USD && p.changePct !== null));
     const way = sort === 'gainers' ? -1 : 1;
-    return movers.sort((a, b) => way * (a.changePct! - b.changePct!)).slice(0, 100);
+    return movers.sort((a, b) => way * (a.changePct! - b.changePct!));
   }
   const coinPop = (p: Product) => pop.get(coinOf(p.base)) ?? 0;
   if (!needle) {
     return perCoin(scored.map((s) => s[2]).filter((p) => !stable(p)))
-      .sort((a, b) => coinPop(b) - coinPop(a) || (b.quoteVolume24h ?? 0) - (a.quoteVolume24h ?? 0))
-      .slice(0, 100);
+      .sort((a, b) => coinPop(b) - coinPop(a) || (b.quoteVolume24h ?? 0) - (a.quoteVolume24h ?? 0));
   }
   scored.sort((a, b) => b[0] - a[0] || coinPop(b[2]) - coinPop(a[2]) || b[1] - a[1]);
-  return scored.slice(0, 100).map((s) => s[2]);
+  return scored.map((s) => s[2]);
 }

@@ -44,6 +44,9 @@ function ratio(products: readonly Product[], query: string): [Product, Product] 
 
 const lastRatio = ([a, b]: [Product, Product]): number | null => (a.lastPrice && b.lastPrice ? a.lastPrice / b.lastPrice : null);
 
+/** Rows drawn at a time: more join as the list is scrolled near its end. */
+const PAGE = 100;
+
 /** How long a result stays highlighted before its candles are fetched. */
 const WARM_MS = 200;
 
@@ -65,6 +68,7 @@ export function SymbolSearch(props: {
   const [sort, setSort] = createSignal<Sort>('popular');
   const [category, setCategory] = createSignal<Category>('all');
   const [venuesOpen, setVenuesOpen] = createSignal(false);
+  const [shown, setShown] = createSignal(PAGE);
   const [cursor, setCursor] = createSignal(0);
   const [markets] = createResource(() => catalog());
   const products = () => (markets.state === 'ready' ? markets()!.products : []);
@@ -83,6 +87,12 @@ export function SymbolSearch(props: {
     return out;
   });
   const picked = () => LIVE_EXCHANGES.find((x) => x.id === exchange());
+  /** The rows drawn: a page or more of every match. */
+  const visible = createMemo(() => rows().slice(0, shown()));
+  const more = () => rows().length > shown();
+  const onScroll = () => {
+    if (more() && list.scrollTop + list.clientHeight > list.scrollHeight - 400) setShown((s) => s + PAGE);
+  };
   /** The ratio the query spells, first in the list when there is one. */
   const pair = createMemo(() => (props.ratios ? ratio(products(), query()) : null));
   const first = () => (pair() ? 1 : 0);
@@ -103,7 +113,17 @@ export function SymbolSearch(props: {
     // Caret at the end, never select-all: the next keystroke must extend the query.
     input.setSelectionRange(input.value.length, input.value.length);
   });
-  createEffect(on([query, kind, exchange, sort, category], () => setCursor(0), { defer: true }));
+  createEffect(
+    on(
+      [query, kind, exchange, sort, category],
+      () => {
+        setCursor(0);
+        setShown(PAGE);
+        list.scrollTop = 0;
+      },
+      { defer: true },
+    ),
+  );
   createEffect(() => {
     cursor();
     list.querySelector('[data-cur]')?.scrollIntoView({ block: 'nearest' });
@@ -126,10 +146,14 @@ export function SymbolSearch(props: {
   onCleanup(() => clearTimeout(warmTimer));
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const n = rows().length + first();
+    const n = visible().length + first();
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      if (n > 0) setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+      // Down past the last row drawn draws the next page, not a wrap to the top.
+      if (e.key === 'ArrowDown' && cursor() === n - 1 && more()) {
+        setShown((s) => s + PAGE);
+        setCursor(n);
+      } else if (n > 0) setCursor((c) => (c + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const market = pick(cursor()) ?? typed();
@@ -217,7 +241,7 @@ export function SymbolSearch(props: {
             </For>
           </div>
         </Show>
-        <div ref={list} class="list">
+        <div ref={list} class="list" onScroll={onScroll}>
           <Show when={markets.state !== 'errored'} fallback={<div class="empty warn">{tl('▲ The market list is unavailable:')} {errorText(markets.error)}. A market typed as venue:SYMBOL — binance-perp:BTCUSDT — still opens with Enter.</div>}>
             <Show when={markets.state === 'ready'} fallback={<div class="empty">{tl('Loading markets from every venue…')}</div>}>
               <Show when={pair()}>
@@ -242,7 +266,7 @@ export function SymbolSearch(props: {
                 )}
               </Show>
               <Show when={rows().length > 0 || pair()} fallback={<div class="empty">{tl('Nothing matches “')}{query()}”.</div>}>
-                <For each={rows()}>
+                <For each={visible()}>
                   {(p, i) => (
                     <div class="row" classList={{ cur: i() + first() === cursor() }} data-cur={i() + first() === cursor() ? '' : undefined} onMouseMove={() => setCursor(i() + first())} onClick={() => props.onSelect(p.market)}>
                       <span class="sym">{symbolOf(p.market)}</span>
@@ -274,6 +298,7 @@ export function SymbolSearch(props: {
         <footer>
           <span>
             {rows().length} {tl('of')} {products().length} {tl('markets')}
+            {more() ? tlf(' · {0} shown, scroll for more', visible().length) : ''}
             {unavailable().length > 0 ? tlf(' · {0} unavailable', unavailable().join(', ')) : ''}
           </span>
           <span>{tl('↑↓ move · ↵ open · tab perp/spot · esc close')}</span>
