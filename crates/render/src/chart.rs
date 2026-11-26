@@ -1581,7 +1581,33 @@ impl Chart {
         self.panes.iter().map(|p| format!("{}:{}", p.group.as_str(), tradoor_core::format::fixed(self.weight(p.group), 3))).collect::<Vec<_>>().join(",")
     }
 
-    pub fn set_drawings(&mut self, shapes: Vec<DrawingShape>) {
+    pub fn set_drawings(&mut self, mut shapes: Vec<DrawingShape>) {
+        // A drawing the page has just saved comes back under the server's id in place of its
+        // temporary one (a small negative): picked or held under the pointer, it stays so under
+        // the new id, where the pointer has it rather than where it was first sent from.
+        let held = match self.drag {
+            Drag::Shape { id, .. } | Drag::Anchor { id, .. } => Some(id),
+            _ => None,
+        };
+        if let Some(old) = held.or(self.selected).filter(|id| (-1_000_000..0).contains(id) && !shapes.iter().any(|s| s.id == Some(*id))) {
+            let mut fresh = shapes.iter_mut().filter(|s| s.id.is_some_and(|id| id >= 0 && !self.drawings.iter().any(|d| d.id == Some(id))));
+            if let (Some(new), None) = (fresh.next(), fresh.next()) {
+                let to = new.id.unwrap_or(old);
+                if held == Some(old) {
+                    if let Some(d) = self.drawings.iter().find(|d| d.id == Some(old)) {
+                        new.points = d.points.clone();
+                    }
+                }
+                if self.selected == Some(old) {
+                    self.selected = Some(to);
+                }
+                if let Drag::Shape { id, .. } | Drag::Anchor { id, .. } = &mut self.drag {
+                    if *id == old {
+                        *id = to;
+                    }
+                }
+            }
+        }
         if self.selected.is_some_and(|id| !shapes.iter().any(|s| s.id == Some(id))) {
             self.selected = None;
         }
@@ -5834,6 +5860,35 @@ mod tests {
         c.set_selected(None);
         c.drawings[0].style = DrawingStyle::from_pairs([("alwaysStats", "1")]);
         assert!(figures(&mut c), "or always, when asked");
+    }
+
+    #[test]
+    fn a_position_held_before_the_server_answers_stays_held_under_its_saved_id() {
+        let mut c = chart();
+        c.set_tool(Some(DrawingKind::Long));
+        c.pointer_down(300.0, 200.0, 0);
+        c.pointer_up(300.0, 200.0);
+        let Some(Event::DrawingCreated { points, .. }) = c.take_events().into_iter().next() else { panic!() };
+        // The page shows it under a temporary id at once; it is picked and dragged.
+        c.set_drawings(vec![DrawingShape::new(Some(-1), DrawingKind::Long, points.clone())]);
+        c.set_selected(Some(-1));
+        c.render(0);
+        c.pointer_move(310.0, 190.0);
+        c.pointer_down(310.0, 190.0, 0);
+        c.pointer_move(360.0, 170.0);
+        // The server answers mid-drag: the same drawing, saved where it was placed.
+        c.set_drawings(vec![DrawingShape::new(Some(42), DrawingKind::Long, points.clone())]);
+        assert_eq!(c.selected(), Some(42), "still picked");
+        assert_ne!(c.drawings[0].points, points, "where the pointer has it, not back where it was placed");
+        c.pointer_move(400.0, 160.0);
+        c.pointer_up(400.0, 160.0);
+        let moved = c.take_events().into_iter().find_map(|e| match e {
+            Event::DrawingChanged { id, points } => Some((id, points)),
+            _ => None,
+        });
+        let (id, moved) = moved.expect("the move is told");
+        assert_eq!(id, 42);
+        assert!(moved[0].time > points[0].time && moved[0].price > points[0].price, "{moved:?}");
     }
 
     #[test]

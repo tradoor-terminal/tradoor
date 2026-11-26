@@ -1268,8 +1268,14 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         return;
       }
       history.rekey(r, drawing.id);
-      setDrawings((list) => list.map((d) => (d.id === temporary.id ? drawing : d)));
-      tellCharts(m, kind, { saved: drawing });
+      // Moved or restyled before the server answered: that change stands, and is sent now under its id.
+      const now = drawings().find((d) => d.id === temporary.id);
+      const changed = now !== undefined && (now.points !== temporary.points || now.style !== temporary.style || now.label !== temporary.label);
+      const saved = changed ? { ...drawing, points: now.points, style: now.style, label: now.label } : drawing;
+      setDrawings((list) => list.map((d) => (d.id === temporary.id ? saved : d)));
+      if (selected() === temporary.id) setSelected(drawing.id);
+      tellCharts(m, kind, { saved });
+      if (changed) void changeDrawing(drawing.id, { points: now.points, style: now.style, label: now.label }, false);
     } catch (e) {
       setDrawError(errorText(e));
       history.forget(r);
