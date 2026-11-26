@@ -114,3 +114,11 @@ Deno.test('every match is returned, not the first hundred', () => {
   assertEquals(rank(many, '', 'all', null, 'popular', popularity(many)).length, 250);
   assertEquals(rank(many, 'C', 'all', null, 'popular', popularity(many)).length, 250);
 });
+
+Deno.test("a group past the coins lists every exchange's market, a name's together", () => {
+  const gold = (venue: string, volume: number): Product => ({ ...market(venue, 'XAUUSDT', 'XAU', 'USDT', volume), class: 'commodity' });
+  const list = [gold('binance-perp', 500), gold('bybit-perp', 300), { ...market('bybit-perp', 'CLUSDT', 'CL', 'USDT', 100), class: 'commodity' as const }, gold('okx-perp', 200)];
+  const got = rank(list, '', 'all', null, 'popular', popularity(list), [], 'commodity').map((p) => p.market);
+  assertEquals(got, ['binance-perp:XAUUSDT', 'bybit-perp:XAUUSDT', 'okx-perp:XAUUSDT', 'bybit-perp:CLUSDT']);
+  assertEquals(rank(list, '', 'all', null, 'popular', popularity(list), [], 'all').length, 2, 'All keeps one a name');
+});

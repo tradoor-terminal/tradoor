@@ -130,7 +130,10 @@ export function rank(
   }
   const coinPop = (p: Product) => pop.get(coinOf(p.base)) ?? 0;
   if (!needle) {
-    return perCoin(scored.map((s) => s[2]).filter((p) => !stable(p)))
+    // Coins show once each, the busiest market; the other groups are short
+    // enough to list every exchange's, a name's markets together.
+    const listed = scored.map((s) => s[2]).filter((p) => !stable(p));
+    return (category === 'all' || category === 'crypto' ? perCoin(listed) : listed)
       .sort((a, b) => coinPop(b) - coinPop(a) || (b.quoteVolume24h ?? 0) - (a.quoteVolume24h ?? 0));
   }
   scored.sort((a, b) => b[0] - a[0] || coinPop(b[2]) - coinPop(a[2]) || b[1] - a[1]);
