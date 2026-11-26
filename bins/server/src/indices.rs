@@ -339,6 +339,7 @@ impl Indices {
                 quote_volume_24h: None,
                 last_price: last,
                 change_pct: last.zip(before).filter(|(_, b)| *b != 0.0).map(|(l, b)| (l / b - 1.0) * 100.0),
+                class: Some("index"),
             });
         }
         out

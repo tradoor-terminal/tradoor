@@ -70,6 +70,8 @@ export interface Product {
   kind: 'spot' | 'perp' | 'index';
   /** What it is, where the symbol does not say: an index's or a stock's name. */
   name?: string;
+  /** What it follows where that is not a coin; none for a coin. */
+  class?: 'stock' | 'etf' | 'index' | 'commodity' | 'forex';
   priceDecimals: number | null;
   quoteVolume24h: number | null;
   lastPrice: number | null;

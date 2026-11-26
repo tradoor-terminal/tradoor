@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::catalog::{num, product, unique, Product};
+use crate::catalog::{num, product, tradfi_class, unique, Product};
 use crate::{shape, Kind, Venue, VenueError};
 
 pub const REST: &str = "https://api.bitget.com";
@@ -51,7 +51,13 @@ pub fn parse_products(venue: Venue, instruments: &str, tickers: Option<&str>) ->
             // Bitget, and topped every list sorted by it. No figure beats that one.
             let stock = i["areaSymbol"] == "yes";
             let volume = t.and_then(|t| num(t.get("quoteVolume"))).filter(|_| !stock);
-            product(venue, i["baseCoin"].as_str()?, i["quoteCoin"].as_str()?, symbol, decimals, volume, t.and_then(|t| num(t.get("lastPr"))), t.and_then(|t| num(t.get("change24h"))).map(|c| c * 100.0))
+            let (base, quote) = (i["baseCoin"].as_str()?, i["quoteCoin"].as_str()?);
+            let mut p = product(venue, base, quote, symbol, decimals, volume, t.and_then(|t| num(t.get("lastPr"))), t.and_then(|t| num(t.get("change24h"))).map(|c| c * 100.0))?;
+            // Real-world assets: stocks, funds, metals. Spot's zone also holds a
+            // few coins (PI, USDC/USD); its stocks are the `r…` and `pre…` tokens.
+            let token = |b: &str| b.starts_with(['r', 'R']) || b.to_ascii_lowercase().starts_with("pre");
+            p.class = ((stock && token(base)) || i["isRwa"] == "YES").then(|| tradfi_class(base, quote, "stock"));
+            Some(p)
         })
         .collect();
     Ok(unique(list))

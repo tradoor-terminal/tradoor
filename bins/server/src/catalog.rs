@@ -58,7 +58,7 @@ pub struct Wire {
 }
 
 /// The columns of a `wire` row, in order; a row stops at its last non-null.
-const COLUMNS: [&str; 9] = ["symbol", "base", "quote", "priceDecimals", "quoteVolume24h", "lastPrice", "changePct", "native", "name"];
+const COLUMNS: [&str; 10] = ["symbol", "base", "quote", "priceDecimals", "quoteVolume24h", "lastPrice", "changePct", "native", "name", "class"];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -329,6 +329,7 @@ impl Catalog {
             venues.push(VenueStatus { id: venue.id(), label: venue.label(), count: products.len(), error });
             by_venue.push((venue, products));
         }
+        tradoor_venues::catalog::spread_classes(&mut by_venue.iter_mut().flat_map(|(_, p)| p.iter_mut()).collect::<Vec<_>>());
         let updated_at = tradoor_store::now_ms();
         let response = Response { updated_at, venues: venues.iter().collect(), products: by_venue.iter().flat_map(|(_, p)| p).collect() };
         let body = Arc::new(Bytes::from(serde_json::to_vec(&response).expect("catalogue serialises")));
@@ -368,6 +369,7 @@ fn wire_of(updated_at: i64, venues: &[VenueStatus], by_venue: &[(Venue, Vec<Prod
                         json!(p.change_pct.map(|c| (c * 100.0).round() / 100.0)),
                         json!(p.native),
                         json!(p.name),
+                        json!(p.class),
                     ];
                     while row.last().is_some_and(serde_json::Value::is_null) {
                         row.pop();

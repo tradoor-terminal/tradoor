@@ -26,7 +26,7 @@ interface Wire {
 
 export function readWire(wire: Wire): Listing {
   const col = (name: string): number => wire.columns.indexOf(name);
-  const [symbol, base, quote, decimals, volume, last, change, native, name] = [col('symbol'), col('base'), col('quote'), col('priceDecimals'), col('quoteVolume24h'), col('lastPrice'), col('changePct'), col('native'), col('name')] as const;
+  const [symbol, base, quote, decimals, volume, last, change, native, name, cls] = [col('symbol'), col('base'), col('quote'), col('priceDecimals'), col('quoteVolume24h'), col('lastPrice'), col('changePct'), col('native'), col('name'), col('class')] as const;
   const products: Listed[] = [];
   for (const [venue, rows] of Object.entries(wire.markets)) {
     const kind = venue === 'index' ? 'index' : venue.endsWith('perp') ? 'perp' : 'spot';
@@ -35,6 +35,7 @@ export function readWire(wire: Wire): Listing {
       const p: Listed = { market: `${venue}:${r[symbol]}`, venue, symbol: r[symbol] as string, base: r[base] as string, quote: r[quote] as string, kind, priceDecimals: at(decimals), quoteVolume24h: at(volume), lastPrice: at(last), changePct: at(change) };
       if (r[native] != null) p.native = r[native] as string;
       if (r[name] != null) p.name = r[name] as string;
+      if (cls >= 0 && r[cls] != null) p.class = r[cls] as Product['class'];
       products.push(p);
     }
   }

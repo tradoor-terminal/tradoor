@@ -15,6 +15,10 @@ pub const SPOT: &str = "https://api.kraken.com";
 pub const FUTURES: &str = "https://futures.kraken.com";
 /// Quotes a spot pair is listed under here.
 const SPOT_QUOTES: [&str; 4] = ["USD", "USDT", "USDC", "EUR"];
+/// Currencies whose pairs with each other are kept whatever the quote, so
+/// USD/CHF and USD/CAD join EUR/USD. The yen is left out: Kraken's USD/JPY
+/// trades a few dozen times a day across a spread of points.
+const FIAT: [&str; 6] = ["USD", "EUR", "GBP", "AUD", "CHF", "CAD"];
 
 pub fn spot_pairs_url() -> String {
     format!("{SPOT}/0/public/AssetPairs")
@@ -49,7 +53,8 @@ fn result(body: &str) -> Result<Value, VenueError> {
     Ok(v.get_mut("result").map(Value::take).unwrap_or(Value::Null))
 }
 
-/// Online spot pairs quoted in the dollar, its stablecoins or the euro.
+/// Online spot pairs quoted in the dollar, its stablecoins or the euro, and
+/// currency pairs.
 /// Tickers are keyed by Kraken's pair name; `o` is today's open.
 pub fn parse_spot(pairs: &str, tickers: Option<&str>) -> Result<Vec<Product>, VenueError> {
     let stats = match tickers {
@@ -64,7 +69,7 @@ pub fn parse_spot(pairs: &str, tickers: Option<&str>) -> Result<Vec<Product>, Ve
         .filter_map(|(key, p)| {
             let (base, quote) = p["wsname"].as_str()?.split_once('/')?;
             let (base, quote) = (coin(base), coin(quote));
-            if !SPOT_QUOTES.contains(&quote) {
+            if !SPOT_QUOTES.contains(&quote) && !(FIAT.contains(&base) && FIAT.contains(&quote)) {
                 return None;
             }
             let t = &stats[key];
@@ -110,7 +115,10 @@ mod tests {
         let pairs = r#"{"error":[],"result":{
             "XXBTZUSD":{"altname":"XBTUSD","wsname":"XBT/USD","base":"XXBT","quote":"ZUSD","pair_decimals":1,"status":"online"},
             "XDGUSD":{"altname":"XDGUSD","wsname":"XDG/USD","pair_decimals":7,"status":"online"},
-            "XXBTZJPY":{"altname":"XBTJPY","wsname":"XBT/JPY","pair_decimals":0,"status":"online"}}}"#;
+            "XXBTZJPY":{"altname":"XBTJPY","wsname":"XBT/JPY","pair_decimals":0,"status":"online"},
+            "XBTCHF":{"altname":"XBTCHF","wsname":"XBT/CHF","pair_decimals":0,"status":"online"},
+            "USDCHF":{"altname":"USDCHF","wsname":"USD/CHF","pair_decimals":5,"status":"online"},
+            "ZUSDZJPY":{"altname":"USDJPY","wsname":"USD/JPY","pair_decimals":3,"status":"online"}}}"#;
         let tickers = r#"{"error":[],"result":{"XXBTZUSD":{"c":["86583.8","0.35"],"v":["511.3","2948.9"],"o":"86199.0"}}}"#;
         let p = parse_spot(pairs, Some(tickers)).unwrap();
         let btc = p.iter().find(|p| p.symbol == "BTCUSD").unwrap();
@@ -118,6 +126,8 @@ mod tests {
         assert!((btc.quote_volume_24h.unwrap() - 2948.9 * 86583.8).abs() < 1.0);
         assert!(p.iter().any(|p| p.native.as_deref() == Some("DOGE/USD")));
         assert!(!p.iter().any(|p| p.quote == "JPY"));
+        assert!(p.iter().any(|p| p.market == "kraken-spot:USDCHF"));
+        assert!(!p.iter().any(|p| p.symbol == "BTCCHF"));
     }
 
     #[test]

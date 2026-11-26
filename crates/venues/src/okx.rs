@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::catalog::{change, num, product, tick_decimals, unique, Product};
+use crate::catalog::{change, num, product, tick_decimals, tradfi_class, unique, Product};
 use crate::{shape, Kind, Venue, VenueError};
 
 pub const REST: &str = "https://www.okx.com";
@@ -53,7 +53,16 @@ pub fn parse_products(venue: Venue, instruments: &str, tickers: Option<&str>) ->
             let t = stats.get(native);
             let last = t.and_then(|t| num(t.get("last")));
             let volume = t.and_then(|t| num(t.get("volCcy24h"))).map(|v| if perp { v * last.unwrap_or(0.0) } else { v });
-            product(venue, base, quote, native, tick_decimals(i["tickSz"].as_str()), volume, last, change(t.and_then(|t| num(t.get("open24h"))), last))
+            let mut p = product(venue, base, quote, native, tick_decimals(i["tickSz"].as_str()), volume, last, change(t.and_then(|t| num(t.get("open24h"))), last))?;
+            // 1 coins, 3 stocks and funds, 4 commodities, 5 currencies.
+            let hint = match i["instCategory"].as_str() {
+                Some("3") => Some("stock"),
+                Some("4") => Some("commodity"),
+                Some("5") => Some("forex"),
+                _ => None,
+            };
+            p.class = hint.map(|h| tradfi_class(base, quote, h));
+            Some(p)
         })
         .collect();
     Ok(unique(list))

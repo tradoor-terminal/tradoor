@@ -2514,11 +2514,12 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
           fallback={
             <>
               <Show when={!props.training}>
-                <button class="symbol" onClick={() => setOverlay({ kind: 'symbol', panelId: id, initial: '' })}>
+                {/* One button, the exchange's mark in it: a held finger opens the search, never selects the name. */}
+                <button class="symbol sym-btn" aria-label={tl('Change symbol')} onClick={() => setOverlay({ kind: 'symbol', panelId: id, initial: '' })}>
+                  <VenueTag market={market()} />
                   <span>{symbolOf(market())}</span>
                   <Icon name="chevron" size={10} />
                 </button>
-                <VenueTag market={market()} />
                 <WatchlistToggle market={market()} />
                 <button class="tb num on tf-now" aria-label={tlf('{0} — every timeframe', tfName(timeframe()))} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => openTfMenu(e.currentTarget)}>
                   <span>{tfLabel(timeframe())}</span>

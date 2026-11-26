@@ -92,3 +92,19 @@ Deno.test("indices and index perpetuals are found under TradingView's names", ()
   assertEquals(spx.slice(0, 2), ['binance-perp:SPXUSDT', 'hyperliquid-perp:SP500USD'], 'the coin spelled so first, then the index');
   assertEquals(rank(list, '', 'all', 'index', 'popular', popularity(list)).length, 2, 'the Index exchange lists them all');
 });
+
+Deno.test('a group keeps its own markets, and a currency pair is no stablecoin there', () => {
+  const tag = (p: Product, c: Product['class']): Product => ({ ...p, class: c });
+  const list = [
+    market('binance-perp', 'BTCUSDT', 'BTC', 'USDT', 900),
+    tag(market('binance-perp', 'XAUUSDT', 'XAU', 'USDT', 500), 'commodity'),
+    tag(market('kraken-spot', 'EURUSD', 'EUR', 'USD', 300), 'forex'),
+    tag(market('kraken-spot', 'EURGBP', 'EUR', 'GBP', 100), 'forex'),
+    market('binance-spot', 'USDCUSDT', 'USDC', 'USDT', 9000),
+  ];
+  const symbols = (c: Parameters<typeof rank>[7]) => rank(list, '', 'all', null, 'popular', popularity(list), [], c).map((p) => p.symbol);
+  assertEquals(symbols('crypto'), ['BTCUSDT']);
+  assertEquals(symbols('commodity'), ['XAUUSDT']);
+  assertEquals(symbols('forex').sort(), ['EURGBP', 'EURUSD']);
+  assertEquals(symbols('all').includes('USDCUSDT'), false);
+});

@@ -283,8 +283,23 @@ button:has(> svg) > span, .venue-name, .sig-score .div { text-box: trim-both cap
 .chips button:hover { color: var(--primary); }
 .chips button.on { background: var(--primary); color: var(--bg); }
 .chips .sep-v { width: 1px; margin: 3px 4px; background: var(--border); }
-.chips button.xchip { display: flex; align-items: center; padding: 1px 4px; opacity: 0.45; }
-.chips button.xchip:hover, .chips button.xchip.on { opacity: 1; background: var(--surface-3); }
+/* The symbol picker's groups, as tabs, and the exchange it is narrowed to, a menu of names beside them. */
+.ss-groups { display: flex; align-items: stretch; gap: 8px; flex: none; padding: 0 6px 0 2px; border-bottom: 1px solid var(--border); }
+.ss-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.ss-tabs::-webkit-scrollbar { display: none; }
+.ss-tabs button { flex: none; padding: 8px 10px 6px; border-bottom: 2px solid transparent; font-size: .75rem; color: var(--dim); white-space: nowrap; }
+.ss-tabs button:hover { color: var(--text); }
+.ss-tabs button.on { border-bottom-color: var(--primary); color: var(--text); }
+.ss-venue { display: flex; align-items: center; gap: 6px; flex: none; margin: 5px 0; padding: 0 8px; border: 1px solid var(--border); font-size: .75rem; color: var(--muted); white-space: nowrap; }
+.ss-venue:hover, .ss-venue.on { background: var(--surface-3); color: var(--text); }
+.ss-venue.picked { border-color: var(--primary); color: var(--text); }
+.ss-venues { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; flex: none; max-height: 45vh; overflow-y: auto; padding: 8px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.ss-venues button { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--border); font-size: .75rem; color: var(--text); text-align: left; }
+.ss-venues button:hover { background: var(--surface-3); }
+.ss-venues button.on { border-color: var(--primary); }
+.ss-venues button.none { opacity: 0.4; }
+.ss-venues .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ss-all { width: 18px; text-align: center; color: var(--muted); }
 .list .row { display: flex; align-items: center; gap: 10px; padding: 3px 8px; white-space: nowrap; cursor: pointer; }
 .list .row.cur { background: var(--surface-3); }
 .list .row.cur .sym { color: var(--primary); }
@@ -865,6 +880,9 @@ table.venues tr.off td { color: var(--dim); }
   .rangebar.mbar::-webkit-scrollbar { display: none; }
   .rangebar.mbar > * { flex-shrink: 0; }
   .rangebar.mbar .symbol { min-height: 32px; font-size: .875rem; }
+  .rangebar.mbar .sym-btn { gap: 5px; height: 32px; padding: 0 8px 0 6px; border: 1px solid var(--border); background: var(--surface-2); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .rangebar.mbar .sym-btn:active { background: var(--surface-3); }
+  .rangebar.mbar .sym-btn > svg { color: var(--muted); }
   .rangebar.mbar .venue .kind, .rangebar.mbar .venue-name { display: none; }
   .rangebar.mbar .tf-now { display: inline-flex; align-items: center; min-height: 30px; margin: 0 4px; padding: 0 8px; font-size: .75rem; }
   /* Capitals and digits have no descenders: trimmed to their cap height, they sit in the middle of the button. */
@@ -885,8 +903,14 @@ table.venues tr.off td { color: var(--dim); }
   .dialog > header .title { display: none; }
   /* 16px is the size below which iOS zooms the page when a field is tapped. */
   .dialog input.q { flex: 1 0 100%; order: -1; padding: 8px 6px; font-size: 1rem; }
-  /* Fourteen exchanges and the filters beside them: two lines, every one in view. */
   .dialog > header .chips { flex: 1; min-width: 0; flex-wrap: wrap; row-gap: 3px; padding-right: 0; }
+  .dialog > header .chips button { padding: 5px 7px; }
+  .ss-tabs button { padding: 10px 10px 8px; font-size: .8125rem; }
+  .ss-venue { padding: 0 8px; }
+  /* The tabs need the row: the exchange shows as its logo, or the funnel for every one. */
+  .ss-venue > span { display: none; }
+  .ss-venues { grid-template-columns: repeat(2, 1fr); max-height: 50dvh; }
+  .ss-venues button { padding: 10px 8px; font-size: .8125rem; }
   .dialog > header .x { margin-left: auto; padding: 4px 6px; }
   /* And a result keeps what names it: the exchange's mark without its name,
      the price and the change, but not the day's turnover. */

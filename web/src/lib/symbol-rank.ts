@@ -6,6 +6,19 @@
 import type { Product } from './api';
 
 export type Kind = 'all' | 'perp' | 'spot';
+/** What a market follows: coins, or what the server's catalogue marks (`class`). */
+export type Category = 'all' | 'crypto' | NonNullable<Product['class']>;
+/** The picker's groups in order: everything, the coins, then the rest. */
+export const CATEGORIES: { id: Category; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'crypto', label: 'Crypto' },
+  { id: 'stock', label: 'Stocks' },
+  { id: 'etf', label: 'ETFs' },
+  { id: 'index', label: 'Indices' },
+  { id: 'forex', label: 'Forex' },
+  { id: 'commodity', label: 'Commodities' },
+];
+export const inCategory = (p: Product, c: Category): boolean => c === 'all' || (c === 'crypto' ? !p.class : p.class === c);
 /** The list's order: the coins most traded, or the day's biggest moves up or down. */
 export type Sort = 'popular' | 'gainers' | 'losers';
 /** A mover that trades less than this a day is noise, not news. */
@@ -39,12 +52,17 @@ export function popularity(products: readonly Product[]): Map<string, number> {
   return out;
 }
 
+/** What one line of the list stands for: a coin, or a pair of currencies (EUR/USD and EUR/GBP are two). */
+const lineOf = (p: Product): string => (p.class === 'forex' ? (p.base.length === 6 ? p.base : p.base + (DOLLARS.has(p.quote) ? 'USD' : p.quote)) : coinOf(p.base));
+/** A stablecoin, unless a currency pair is meant: EUR/USD is no stablecoin. */
+const stable = (p: Product): boolean => p.class !== 'forex' && STABLE.has(coinOf(p.base));
+
 /** One market a coin: its most traded dollar market, where it has one. */
 function perCoin(list: Product[]): Product[] {
   const best = new Map<string, Product>();
   const weight = (p: Product) => (DOLLARS.has(p.quote) ? 1e15 : 0) + (p.quoteVolume24h ?? 0);
   for (const p of list) {
-    const coin = coinOf(p.base);
+    const coin = lineOf(p);
     const held = best.get(coin);
     if (!held || weight(p) > weight(held)) best.set(coin, p);
   }
@@ -68,6 +86,7 @@ export function rank(
   pop: Map<string, number> = new Map(),
   /** The exchanges a word of the query can name: `bybit btc`. */
   exchanges: readonly string[] = [],
+  category: Category = 'all',
 ): Product[] {
   let exchange: string | null = exchangeFilter;
   let kind = kindFilter;
@@ -88,6 +107,7 @@ export function rank(
   for (const p of products) {
     if (kind !== 'all' && p.kind !== kind) continue;
     if (exchange && !p.venue.startsWith(exchange)) continue;
+    if (!inCategory(p, category)) continue;
     let score = 1;
     if (needle) {
       if (p.symbol === needle) score = 100;
@@ -103,13 +123,13 @@ export function rank(
     scored.push([score + (DOLLARS.has(p.quote) ? 0.5 : 0), p.quoteVolume24h ?? 0, p]);
   }
   if (sort !== 'popular') {
-    const movers = perCoin(scored.map((s) => s[2]).filter((p) => DOLLARS.has(p.quote) && !STABLE.has(coinOf(p.base)) && (p.quoteVolume24h ?? 0) >= MOVER_MIN_USD && p.changePct !== null));
+    const movers = perCoin(scored.map((s) => s[2]).filter((p) => DOLLARS.has(p.quote) && !stable(p) && (p.quoteVolume24h ?? 0) >= MOVER_MIN_USD && p.changePct !== null));
     const way = sort === 'gainers' ? -1 : 1;
     return movers.sort((a, b) => way * (a.changePct! - b.changePct!)).slice(0, 100);
   }
   const coinPop = (p: Product) => pop.get(coinOf(p.base)) ?? 0;
   if (!needle) {
-    return perCoin(scored.map((s) => s[2]).filter((p) => !STABLE.has(coinOf(p.base))))
+    return perCoin(scored.map((s) => s[2]).filter((p) => !stable(p)))
       .sort((a, b) => coinPop(b) - coinPop(a) || (b.quoteVolume24h ?? 0) - (a.quoteVolume24h ?? 0))
       .slice(0, 100);
   }

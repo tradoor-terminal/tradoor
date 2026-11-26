@@ -9,8 +9,9 @@ import { catalog, errorText, type Product } from '../lib/api';
 import { formatPct, formatPrice, formatTurnover, priceDecimals } from '../lib/format';
 import { ExchangeLogo, exchangeOfVenue, LIVE_EXCHANGES, type ExchangeId } from '../lib/exchanges';
 import { isChartMarket, isMarket, ratioOf, symbolOf, venueLabel } from '../lib/markets';
-import { popularity, rank, type Kind, type Sort } from '../lib/symbol-rank';
+import { CATEGORIES, inCategory, popularity, rank, type Category, type Kind, type Sort } from '../lib/symbol-rank';
 import { tl, tlf } from '../lib/i18n';
+import { Icon } from '../lib/icons';
 
 const EXCHANGE_IDS = LIVE_EXCHANGES.map((e) => e.id);
 
@@ -62,11 +63,26 @@ export function SymbolSearch(props: {
   const [kind, setKind] = createSignal<Kind>('all');
   const [exchange, setExchange] = createSignal<ExchangeId | null>(props.exchange && EXCHANGE_IDS.includes(props.exchange as ExchangeId) ? (props.exchange as ExchangeId) : null);
   const [sort, setSort] = createSignal<Sort>('popular');
+  const [category, setCategory] = createSignal<Category>('all');
+  const [venuesOpen, setVenuesOpen] = createSignal(false);
   const [cursor, setCursor] = createSignal(0);
   const [markets] = createResource(() => catalog());
   const products = () => (markets.state === 'ready' ? markets()!.products : []);
   const pop = createMemo(() => popularity(products()));
-  const rows = createMemo(() => rank(products(), query(), kind(), exchange(), sort(), pop(), EXCHANGE_IDS));
+  const rows = createMemo(() => rank(products(), query(), kind(), exchange(), sort(), pop(), EXCHANGE_IDS, category()));
+  /** The groups the catalogue has markets in: a group with none is no tab. */
+  const categories = createMemo(() => CATEGORIES.filter((c) => c.id === 'all' || products().some((p) => inCategory(p, c.id))));
+  /** Each exchange's markets in the group and kind picked: an exchange with none is greyed out. */
+  const counts = createMemo(() => {
+    const out = new Map<string, number>();
+    for (const p of products()) {
+      if ((kind() !== 'all' && p.kind !== kind()) || !inCategory(p, category())) continue;
+      const id = exchangeOfVenue(p.venue).id;
+      out.set(id, (out.get(id) ?? 0) + 1);
+    }
+    return out;
+  });
+  const picked = () => LIVE_EXCHANGES.find((x) => x.id === exchange());
   /** The ratio the query spells, first in the list when there is one. */
   const pair = createMemo(() => (props.ratios ? ratio(products(), query()) : null));
   const first = () => (pair() ? 1 : 0);
@@ -87,7 +103,7 @@ export function SymbolSearch(props: {
     // Caret at the end, never select-all: the next keystroke must extend the query.
     input.setSelectionRange(input.value.length, input.value.length);
   });
-  createEffect(on([query, kind, exchange, sort], () => setCursor(0), { defer: true }));
+  createEffect(on([query, kind, exchange, sort, category], () => setCursor(0), { defer: true }));
   createEffect(() => {
     cursor();
     list.querySelector('[data-cur]')?.scrollIntoView({ block: 'nearest' });
@@ -121,7 +137,8 @@ export function SymbolSearch(props: {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      props.onClose();
+      if (venuesOpen()) setVenuesOpen(false);
+      else props.onClose();
     } else if (e.key === 'Tab') {
       e.preventDefault();
       setKind((k) => (k === 'all' ? 'perp' : k === 'perp' ? 'spot' : 'all'));
@@ -145,14 +162,6 @@ export function SymbolSearch(props: {
             autocomplete="off"
           />
           <div class="chips">
-            <For each={LIVE_EXCHANGES}>
-              {(x) => (
-                <button class="xchip" classList={{ on: exchange() === x.id }} data-tip={exchange() === x.id ? tlf('Showing {0} only — click for every exchange', x.name) : tlf('{0} only', x.name)} onClick={() => setExchange((e) => (e === x.id ? null : x.id))}>
-                  <ExchangeLogo exchange={x} size={14} />
-                </button>
-              )}
-            </For>
-            <span class="sep-v" />
             <For each={['all', 'perp', 'spot'] as const}>
               {(k) => (
                 <button classList={{ on: kind() === k }} onClick={() => setKind(k)}>
@@ -173,6 +182,41 @@ export function SymbolSearch(props: {
             {tl('esc ✕')}
           </button>
         </header>
+        <nav class="ss-groups">
+          <div class="ss-tabs">
+            <For each={categories()}>
+              {(c) => (
+                <button classList={{ on: category() === c.id }} onClick={() => setCategory(c.id)}>
+                  {tl(c.label)}
+                </button>
+              )}
+            </For>
+          </div>
+          <button class="ss-venue" classList={{ on: venuesOpen(), picked: !!picked() }} aria-expanded={venuesOpen()} aria-label={picked()?.name ?? tl('All exchanges')} onClick={() => setVenuesOpen((o) => !o)}>
+            <Show when={picked()} fallback={<Icon name="filter" size={13} />}>
+              {(x) => <ExchangeLogo exchange={x()} size={15} />}
+            </Show>
+            <span>{picked()?.name ?? tl('All exchanges')}</span>
+            <Icon name="chevron" size={10} />
+          </button>
+        </nav>
+        <Show when={venuesOpen()}>
+          <div class="ss-venues">
+            <button classList={{ on: !exchange() }} onClick={() => (setExchange(null), setVenuesOpen(false))}>
+              <span class="ss-all">∗</span>
+              <span class="grow">{tl('All exchanges')}</span>
+            </button>
+            <For each={LIVE_EXCHANGES}>
+              {(x) => (
+                <button classList={{ on: exchange() === x.id, none: !counts().get(x.id) }} onClick={() => (setExchange((e) => (e === x.id ? null : x.id)), setVenuesOpen(false))}>
+                  <ExchangeLogo exchange={x} size={18} />
+                  <span class="grow">{x.name}</span>
+                  <span class="dim num">{counts().get(x.id) ?? 0}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
         <div ref={list} class="list">
           <Show when={markets.state !== 'errored'} fallback={<div class="empty warn">{tl('▲ The market list is unavailable:')} {errorText(markets.error)}. A market typed as venue:SYMBOL — binance-perp:BTCUSDT — still opens with Enter.</div>}>
             <Show when={markets.state === 'ready'} fallback={<div class="empty">{tl('Loading markets from every venue…')}</div>}>

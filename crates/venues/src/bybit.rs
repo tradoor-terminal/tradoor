@@ -110,6 +110,7 @@ pub fn parse_instruments(venue: Venue, body: &str, tickers: Option<&str>) -> Res
                 last_price: t.and_then(|t| num(t.get("lastPrice"))),
                 // Bybit reports a FRACTION; Binance a percent. One unit here.
                 change_pct: t.and_then(|t| num(t.get("price24hPcnt"))).map(|v| v * 100.0),
+                class: None,
             })
         })
         .collect();

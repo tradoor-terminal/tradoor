@@ -67,6 +67,7 @@ fn parse_universe(body: &str) -> Result<Vec<Product>, VenueError> {
             volume.filter(|v| *v > 0.0)?;
             let mut p = product(Venue::HyperliquidPerp, base, "USD", name, decimals, volume, last, change(num(c.get("prevDayPx")), last))?;
             p.name = Some(xyz_name(base));
+            p.class = Some(crate::catalog::tradfi_class(base, "USD", "stock"));
             Some(p)
         })
         .collect())

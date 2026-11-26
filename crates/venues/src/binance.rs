@@ -6,7 +6,7 @@ use serde_json::Value;
 use tradoor_codec::Period;
 use tradoor_core::Interval;
 
-use crate::catalog::{num, tick_decimals, Product};
+use crate::catalog::{num, tick_decimals, tradfi_class, Product};
 use crate::kline::OwnedKline;
 use crate::{shape, Kind, MarketRef, Venue, VenueError};
 
@@ -167,7 +167,8 @@ pub fn parse_products(venue: Venue, info: &str, tickers: Option<&str>) -> Result
         .filter(|s| s.get("status").and_then(Value::as_str) == Some("TRADING"))
         .filter(|s| match venue.kind() {
             Kind::Spot => s.get("isSpotTradingAllowed").and_then(Value::as_bool) != Some(false),
-            Kind::Perp => s.get("contractType").and_then(Value::as_str) == Some("PERPETUAL"),
+            // `TRADIFI_PERPETUAL` is gold's and silver's (XAUUSDT, XAGUSDT).
+            Kind::Perp => matches!(s.get("contractType").and_then(Value::as_str), Some("PERPETUAL" | "TRADIFI_PERPETUAL")),
         })
         .filter_map(|s| {
             let symbol = s.get("symbol")?.as_str()?;
@@ -187,6 +188,16 @@ pub fn parse_products(venue: Venue, info: &str, tickers: Option<&str>) -> Result
                 quote_volume_24h: t.and_then(|t| num(t.get("quoteVolume"))),
                 last_price: t.and_then(|t| num(t.get("lastPrice"))),
                 change_pct: t.and_then(|t| num(t.get("priceChangePercent"))),
+                class: s.get("underlyingType").and_then(Value::as_str).and_then(|u| {
+                    let hint = match u {
+                        "COIN" => return None,
+                        "COMMODITY" => "commodity",
+                        "INDEX" => "index",
+                        "FX" => "forex",
+                        _ => "stock",
+                    };
+                    Some(tradfi_class(s.get("baseAsset")?.as_str()?, s.get("quoteAsset")?.as_str()?, hint))
+                }),
             })
         })
         .collect())
@@ -239,10 +250,11 @@ mod tests {
         let info = r#"{"symbols":[
             {"symbol":"BTCUSDT","status":"TRADING","contractType":"PERPETUAL","baseAsset":"BTC","quoteAsset":"USDT","filters":[{"filterType":"PRICE_FILTER","tickSize":"0.10"}]},
             {"symbol":"BTCUSDT_261225","status":"TRADING","contractType":"CURRENT_QUARTER","baseAsset":"BTC","quoteAsset":"USDT","filters":[]},
+            {"symbol":"XAUUSDT","status":"TRADING","contractType":"TRADIFI_PERPETUAL","baseAsset":"XAU","quoteAsset":"USDT","filters":[]},
             {"symbol":"OLDUSDT","status":"SETTLING","contractType":"PERPETUAL","baseAsset":"OLD","quoteAsset":"USDT","filters":[]}]}"#;
         let tickers = r#"[{"symbol":"BTCUSDT","lastPrice":"77223.8","priceChangePercent":"-1.25","quoteVolume":"12345678.9"}]"#;
         let products = parse_products(Venue::BinancePerp, info, Some(tickers)).unwrap();
-        assert_eq!(products.len(), 1);
+        assert_eq!(products.iter().map(|p| p.symbol.as_str()).collect::<Vec<_>>(), ["BTCUSDT", "XAUUSDT"]);
         let p = &products[0];
         assert_eq!((p.market.as_str(), p.price_decimals, p.last_price, p.change_pct), ("binance-perp:BTCUSDT", Some(1), Some(77223.8), Some(-1.25)));
     }
