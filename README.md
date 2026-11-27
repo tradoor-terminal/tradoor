@@ -341,9 +341,10 @@ that way. Keeping it running and growing still costs something: servers,
 history storage and bandwidth, the AI tools it's built with, and a lot of
 development time.
 
-Three ways to help, if you want to:
+Four ways to help, if you want to:
 
 - **[Sponsor on GitHub](https://github.com/sponsors/rsalianto)**, monthly or once.
+- **[Support on Trakteer](https://teer.id/rsalianto)**, in rupiah by QRIS, e-wallet or bank transfer.
 - **Sign up on an exchange through tradoor's links** (Rewards, in the top bar).
   You pay the same fees or less; the exchange shares a part with tradoor.
 - **Star the repo and tell a trader friend.**

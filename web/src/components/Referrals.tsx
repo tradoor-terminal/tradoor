@@ -126,6 +126,18 @@ export function ReferralDialog(props: { onClose(): void }) {
             {tl('Sponsor')} <Icon name="external" size={11} stroke={2} />
           </span>
         </a>
+        <a class="ref-sponsor trakteer" href="https://teer.id/rsalianto" target="_blank" rel="noopener">
+          <span class="heart" aria-hidden="true">
+            ☕
+          </span>
+          <span class="who">
+            <b>{tl('Support tradoor on Trakteer')}</b>
+            <span>{tl('A one-off treat in rupiah, by QRIS, e-wallet or bank transfer.')}</span>
+          </span>
+          <span class="go">
+            {tl('Support')} <Icon name="external" size={11} stroke={2} />
+          </span>
+        </a>
         <Show when={SPONSORS.length > 0}>
           <div class="ref-backers">
             <span>{tl('Supported by')}</span>
@@ -166,6 +178,16 @@ export function ReferralCard() {
         <span class="who">
           <b>{tl('Sponsor on GitHub')}</b>
           <span>{tl('Servers, market data and new features')}</span>
+        </span>
+        <Icon name="external" size={10} stroke={2} />
+      </a>
+      <a class="ref-sponsor trakteer" href="https://teer.id/rsalianto" target="_blank" rel="noopener" onClick={dismissReferralCard}>
+        <span class="heart" aria-hidden="true">
+          ☕
+        </span>
+        <span class="who">
+          <b>{tl('Support on Trakteer')}</b>
+          <span>{tl('In rupiah, by QRIS, e-wallet or bank transfer')}</span>
         </span>
         <Icon name="external" size={10} stroke={2} />
       </a>

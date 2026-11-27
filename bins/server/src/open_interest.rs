@@ -608,6 +608,7 @@ impl Recorder {
 
     async fn trim(self: Arc<Self>) {
         let mut every = tokio::time::interval(Duration::from_secs(3_600));
+        let mut hours: u64 = 0;
         loop {
             every.tick().await;
             if let Ok(client) = self.pool.get().await {
@@ -616,7 +617,29 @@ impl Recorder {
                 if let Err(e) = client.execute(sql, &[&(now - KEEP_MINUTES_MS), &(now - KEEP_MS), &(now - KEEP_HOURLY_MS)]).await {
                     tracing::error!(error = %e, "trimming open interest");
                 }
+                // Thinning leaves the indexes' pages a fifth, then a twelfth full, and Postgres never
+                // joins them: on 2026-11-27 the key was 1.7 GB for 3.8 million rows, 45 bytes a row
+                // rebuilt. Built afresh an hour after starting and weekly after, beside the old one,
+                // so writes go on meanwhile; the work pool has no statement limit to cut it short.
+                if hours % (7 * 24) == 1 {
+                    // A rebuild cut short (a restart midway) leaves its half-built copy, invalid, to be written to for nothing.
+                    let left = "SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indrelid = 'open_interest'::regclass AND NOT i.indisvalid";
+                    for row in client.query(left, &[]).await.unwrap_or_default() {
+                        let name: String = row.get(0);
+                        if name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                            if let Err(e) = client.batch_execute(&format!("DROP INDEX CONCURRENTLY IF EXISTS {name}")).await {
+                                tracing::error!(error = %e, index = name, "dropping a half-built open interest index");
+                            }
+                        }
+                    }
+                    let started = std::time::Instant::now();
+                    match client.batch_execute("REINDEX TABLE CONCURRENTLY open_interest").await {
+                        Ok(()) => tracing::info!(seconds = started.elapsed().as_secs(), "open interest indexes rebuilt"),
+                        Err(e) => tracing::error!(error = %e, "rebuilding open interest indexes"),
+                    }
+                }
             }
+            hours += 1;
         }
     }
 }
