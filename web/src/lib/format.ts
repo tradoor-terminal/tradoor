@@ -48,22 +48,34 @@ export function formatPrice(v: number | null | undefined, digits?: number): stri
   return f.format(v);
 }
 
+/** A band a short figure is written in: the least size it holds, the unit it
+ *  counts in, its decimals and the unit's letter. */
+export type Band = readonly [least: number, unit: number, decimals: number, letter: string];
+
+/** `v` in the first band, largest first, its size reaches as it reads once
+ *  rounded: 999,960 to the thousand is `1000K`, so it goes in the band above, `1.0M`.
+ *  The last band holds every size below the others. */
+export function banded(v: number, bands: readonly Band[]): string {
+  const abs = Math.abs(v);
+  let k = bands.findIndex(([least]) => abs >= least);
+  while (k > 0 && Number((abs / bands[k]![1]).toFixed(bands[k]![2])) * bands[k]![1] >= bands[k - 1]![0]) k--;
+  const [, unit, decimals, letter] = bands[k]!;
+  return `${(v / unit).toFixed(decimals)}${letter}`;
+}
+
+const TURNOVER: readonly Band[] = [[1e12, 1e12, 1, 'T'], [1e9, 1e9, 1, 'B'], [1e6, 1e6, 1, 'M'], [1e3, 1e3, 0, 'K'], [0, 1, 0, '']];
+
 export function formatTurnover(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
-  const abs = Math.abs(v);
-  if (abs >= 1e12) return `${(v / 1e12).toFixed(1)}T`;
-  if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return v.toFixed(0);
+  return banded(v, TURNOVER);
 }
+
+const VOLUME: readonly Band[] = [[1e12, 1e12, 2, 'T'], [1e9, 1e9, 2, 'B'], [1e6, 1e6, 2, 'M'], [1e3, 1e3, 2, 'K'], [100, 1, 1, ''], [0, 1, 2, '']];
 
 /** A volume as TradingView's watchlist writes it: 112.35K, 1.20M, 845.3. */
 export function formatVolume(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
-  const abs = Math.abs(v);
-  for (const [n, unit] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']] as const) if (abs >= n) return `${(v / n).toFixed(2)}${unit}`;
-  return abs >= 100 ? v.toFixed(1) : v.toFixed(2);
+  return banded(v, VOLUME);
 }
 
 export function formatPct(v: number | null | undefined): string {

@@ -5,6 +5,7 @@
  * Both redraw many times a second, which a table of elements would not take.
  */
 import { onCleanup } from 'solid-js';
+import { banded, type Band } from '../lib/format';
 import type { SizeUnit } from '../workspace/model';
 
 export interface Canvas {
@@ -79,17 +80,12 @@ export function palette(el: Element): Palette {
   };
 }
 
+const SIZES: readonly Band[] = [[1e9, 1e9, 2, 'B'], [1e7, 1e6, 1, 'M'], [1e6, 1e6, 2, 'M'], [1e4, 1e3, 0, 'K'], [1e3, 1e3, 1, 'K'], [100, 1, 0, ''], [10, 1, 1, ''], [0, 1, 2, '']];
+
 /** A size in a few characters: `0.0042`, `12.5`, `3.4K`, `1.25M`. */
 export function compact(v: number): string {
   const abs = Math.abs(v);
-  if (abs >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (abs >= 1e7) return `${(v / 1e6).toFixed(1)}M`;
-  if (abs >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (abs >= 1e4) return `${(v / 1e3).toFixed(0)}K`;
-  if (abs >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  if (abs >= 100) return v.toFixed(0);
-  if (abs >= 10) return v.toFixed(1);
-  if (abs >= 1) return v.toFixed(2);
+  if (abs >= 1) return banded(v, SIZES);
   if (abs === 0) return '0';
   return String(Number(v.toPrecision(2)));
 }
