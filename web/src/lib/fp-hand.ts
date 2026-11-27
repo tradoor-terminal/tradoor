@@ -12,7 +12,7 @@ import { tl } from './i18n';
 
 /** One chart's fills. Made inside the chart, whose end stops them. */
 export function handFills() {
-  const [filling, setFilling] = createSignal<{ market: string; time: number; calls: number } | null>(null);
+  const [filling, setFilling] = createSignal<{ market: string; time: number; share: number } | null>(null);
   const [error, setError] = createSignal<{ text: string } | null>(null);
   /** Bars a fill brought only part of, by market and time: offered again. */
   const partial = new Set<string>();
@@ -39,13 +39,14 @@ export function handFills() {
     note(market: string) {
       const now = filling();
       if (now?.market !== market) return null;
-      return { text: `filling the ${formatClock(now.time).slice(0, 5)} bar from Binance…${now.calls > 1 ? ` ${now.calls} calls` : ''}`, tip: "The bar's trades from Binance's trade history, kept in this browser", progress: 'busy' as const };
+      const pct = Math.floor(now.share * 100);
+      return { text: `filling the ${formatClock(now.time).slice(0, 5)} bar from Binance · ${pct}%`, tip: "The bar's trades from Binance's trade history, kept in this browser: how far the trades that came reach into the bar", progress: now.share };
     },
     async fill(market: string, time: number, barMs: number, tick: number): Promise<void> {
       if (filling()) return fail('A bar is being filled already');
       setError(null);
-      setFilling({ market, time, calls: 0 });
-      const failed = await fillBar(market, time, time + barMs, tick, stop.signal, (calls) => setFilling({ market, time, calls }));
+      setFilling({ market, time, share: 0 });
+      const failed = await fillBar(market, time, time + barMs, tick, stop.signal, (share) => setFilling({ market, time, share }));
       if (stop.signal.aborted) return;
       setFilling(null);
       if (failed?.more) partial.add(`${market}|${time}`);

@@ -276,7 +276,7 @@ async function record(market: string, signal: AbortSignal): Promise<void> {
  * and whether to ask again; null when the bar is whole. `tick` is the server's
  * price step, for a market it records, else 0.
  */
-export async function fillBar(market: string, from: number, to: number, tick: number, signal: AbortSignal, calls: (made: number) => void): Promise<{ why: string; more: boolean } | null> {
+export async function fillBar(market: string, from: number, to: number, tick: number, signal: AbortSignal, progress: (share: number) => void): Promise<{ why: string; more: boolean } | null> {
   const venue = parseMarket(market)?.venue;
   const none = (why: string, more = false) => ({ why, more });
   if (venue !== 'binance-spot' && venue !== 'binance-perp') return none('This exchange keeps no trade history to fill from');
@@ -289,7 +289,7 @@ export async function fillBar(market: string, from: number, to: number, tick: nu
   if (end <= start) return none('This bar is too new: try again in a couple of minutes');
   try {
     const { fillRange } = await import('./fp-fill');
-    const { whole, trades, stopped } = await fillRange(market, venue, start, end, tick, signal, calls);
+    const { whole, trades, stopped } = await fillRange(market, venue, start, end, tick, signal, progress);
     if (trades > 0) {
       channel?.postMessage({ market, full: true });
       tell(market, true);

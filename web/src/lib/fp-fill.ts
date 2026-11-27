@@ -97,13 +97,16 @@ export interface BarFill {
  * can say a stretch was recorded that a sleeping laptop never heard. `level` is
  * the price step to keep it at where the market has none yet, 0 to pick one.
  */
-export async function fillRange(market: string, venue: 'binance-spot' | 'binance-perp', from: number, to: number, level: number, signal: AbortSignal, calls: (made: number) => void): Promise<BarFill> {
+export async function fillRange(market: string, venue: 'binance-spot' | 'binance-perp', from: number, to: number, level: number, signal: AbortSignal, progress: (share: number) => void): Promise<BarFill> {
   const meta = await readMarket(market);
   const empty = (await readMinutes(market, Math.floor(from / MINUTE) * MINUTE, to - 1)).length === 0;
   const holes: Span[] = empty ? [[from, to]] : gaps(meta?.spans ?? [], from, to).reverse();
   let trades = 0;
   let left = 0;
   for (const [a, b] of holes) left += b - a;
+  const of = left;
+  const share = (more = 0) => progress(of > 0 ? Math.min(1, (of - left + more) / of) : 1);
+  share();
   const stopped = await fill(
     market,
     venue,
@@ -115,8 +118,12 @@ export async function fillRange(market: string, venue: 'binance-spot' | 'binance
       trades += got.length;
       await keep(market, start, end, got, level, true);
     },
-    (ms) => (left -= ms),
-    calls,
+    (ms) => {
+      left -= ms;
+      share();
+    },
+    // Within a window the pages go forward from its start: as far as the last trade reached.
+    (start, at) => share(at - start),
   );
   return { whole: left <= 0, trades, stopped };
 }
@@ -151,7 +158,7 @@ async function fill(
   signal: AbortSignal,
   write: (from: number, to: number, trades: AggTrade[]) => Promise<void>,
   filled: (ms: number, back: number, calls: number) => void,
-  asked?: (made: number) => void,
+  step?: (start: number, at: number) => void,
 ): Promise<Stopped | null> {
   const symbol = parseMarket(market)?.symbol;
   if (!symbol) return null;
@@ -171,7 +178,6 @@ async function fill(
     for (const host of hosts) {
       if (calls <= 0 || signal.aborted) return null;
       calls -= 1;
-      asked?.(BACKFILL_CALLS - calls);
       try {
         const name = new URL(host).host;
         const res = await turn((): Promise<Response | number> => {
@@ -208,6 +214,7 @@ async function fill(
       let page = await ask(`startTime=${start}&endTime=${end - 1}`);
       while (page) {
         trades.push(...page.filter((t) => t.time < end));
+        if (page.length > 0) step?.(start, Math.min(end, page[page.length - 1]!.time));
         if (page.length < 1000 || page[page.length - 1]!.time >= end) break;
         page = await ask(`fromId=${page[page.length - 1]!.id + 1}`);
       }
