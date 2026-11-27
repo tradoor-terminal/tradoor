@@ -49,8 +49,6 @@ const PARTNERS: readonly Partner[] = [
     name: 'Lighter',
     Logo: exchangeLogo('lighter'),
     url: 'https://app.lighter.xyz/?referral=TRADOOR&source=tradoor',
-    offer: 'Self-custody perpetuals on Ethereum · zero trading fees on a standard account',
-    more: 'Matching and liquidations proven with zero-knowledge proofs · charted in tradoor with its DOM, tape and footprints',
     lead: true,
     badge: 'New',
   },
@@ -58,8 +56,6 @@ const PARTNERS: readonly Partner[] = [
     name: 'Nado',
     Logo: NadoLogo,
     url: 'https://app.nado.xyz?join=tradoor',
-    offer: 'Backed by the team behind Kraken',
-    more: 'Self-custody perps and spot on Ink · up to 20× · orders matched in 5–15 ms',
   },
   { name: 'Bybit', Logo: exchangeLogo('bybit'), url: 'https://www.bybitglobal.com/invite?ref=EWPZAPL&medium=referral&utm_campaign=evergreen' },
   { name: 'Binance', Logo: exchangeLogo('binance'), url: 'https://www.bmwweb.biz/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_YJYU6&utm_source=referral_entrance' },
@@ -132,7 +128,6 @@ export function ReferralDialog(props: { onClose(): void }) {
           </span>
           <span class="who">
             <b>{tl('Support tradoor on Trakteer')}</b>
-            <span>{tl('A one-off treat in rupiah, by QRIS, e-wallet or bank transfer.')}</span>
           </span>
           <span class="go">
             {tl('Support')} <Icon name="external" size={11} stroke={2} />
@@ -187,7 +182,6 @@ export function ReferralCard() {
         </span>
         <span class="who">
           <b>{tl('Support on Trakteer')}</b>
-          <span>{tl('In rupiah, by QRIS, e-wallet or bank transfer')}</span>
         </span>
         <Icon name="external" size={10} stroke={2} />
       </a>
@@ -201,7 +195,7 @@ export function ReferralCard() {
                 {p.name}
                 {p.badge && <i class="new">{p.badge}</i>}
               </b>
-              <span>{p.offer}</span>
+              {p.offer && <span>{p.offer}</span>}
             </span>
             <Icon name="external" size={10} stroke={2} />
           </a>
