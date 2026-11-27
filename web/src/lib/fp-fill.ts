@@ -6,8 +6,8 @@
  */
 import { digitsFor } from './alerts';
 import { listen, quietUntil, throttled } from './binance-quiet';
-import { cover, gaps, levelFor, MINUTE, MinuteBook, readAggTrades, type Span } from './fp-minutes';
-import { addMinutes, writeMarket, type MarketRecord } from './fp-store';
+import { cover, gaps, levelFor, MINUTE, MinuteBook, readAggTrades, type AggTrade, type Span } from './fp-minutes';
+import { addMinutes, alone, readMarket, readMinutes, writeMarket, type MarketRecord } from './fp-store';
 import { parseMarket } from './markets';
 
 const HOUR = 3_600_000;
@@ -66,21 +66,92 @@ export async function backfill(
   let done = 0;
   progress({ done, of, back: until, calls: 0 });
   try {
-    return await fill(market, venue, holes, get, set, wrote, signal, (ms, back, calls) => progress({ done: (done += ms), of, back, calls }));
+    return await fill(
+      market,
+      venue,
+      holes,
+      signal,
+      async (from, to, trades) => {
+        const meta = await keep(market, from, to, trades, get().level, false);
+        // The recorder's own spans stay: it may have covered more since.
+        set({ ...get(), level: meta.level, spans: cover(get().spans, from, to) });
+        wrote();
+      },
+      (ms, back, calls) => progress({ done: (done += ms), of, back, calls }),
+    );
   } finally {
     progress(null);
   }
+}
+
+/** What filling one bar came to: whether the bar is whole now, how many trades arrived, and what stopped it. */
+export interface BarFill {
+  whole: boolean;
+  trades: number;
+  stopped: Stopped | null;
+}
+
+/**
+ * Binance's trades for one bar the reader asked for, `from..to`, however old:
+ * what no span covers, or all of it where not a minute of it is kept — a span
+ * can say a stretch was recorded that a sleeping laptop never heard. `level` is
+ * the price step to keep it at where the market has none yet, 0 to pick one.
+ */
+export async function fillRange(market: string, venue: 'binance-spot' | 'binance-perp', from: number, to: number, level: number, signal: AbortSignal, calls: (made: number) => void): Promise<BarFill> {
+  const meta = await readMarket(market);
+  const empty = (await readMinutes(market, Math.floor(from / MINUTE) * MINUTE, to - 1)).length === 0;
+  const holes: Span[] = empty ? [[from, to]] : gaps(meta?.spans ?? [], from, to).reverse();
+  let trades = 0;
+  let left = 0;
+  for (const [a, b] of holes) left += b - a;
+  const stopped = await fill(
+    market,
+    venue,
+    holes,
+    signal,
+    async (start, end, got) => {
+      // A window with nothing in it is not marked recorded: Binance may only be without it today.
+      if (got.length === 0) return;
+      trades += got.length;
+      await keep(market, start, end, got, level, true);
+    },
+    (ms) => (left -= ms),
+    calls,
+  );
+  return { whole: left <= 0, trades, stopped };
+}
+
+/**
+ * `trades` of `from..to` kept: those no recording has yet, read afresh as they
+ * are written, so two fills and the recorder never count a trade twice. `bare`
+ * takes a minute with nothing kept too, whatever the spans say.
+ */
+function keep(market: string, from: number, to: number, trades: AggTrade[], hint: number, bare: boolean): Promise<MarketRecord> {
+  return alone(market, async () => {
+    const held = (await readMarket(market)) ?? { market, level: 0, spans: [] };
+    const price = trades[0]?.price ?? 1;
+    const level = held.level > 0 ? held.level : hint > 0 ? hint : levelFor(price, digitsFor(market, price));
+    const open = gaps(held.spans, from, to);
+    const kept = bare ? new Set((await readMinutes(market, Math.floor(from / MINUTE) * MINUTE, to - 1)).map(([at]) => at)) : null;
+    const book = new MinuteBook(level, from);
+    for (const t of trades) {
+      if (open.some(([a, b]) => t.time >= a && t.time < b) || (kept && !kept.has(Math.floor(t.time / MINUTE) * MINUTE))) book.add(t.time, t.price, t.qty, t.buy);
+    }
+    await addMinutes(market, book.take(Number.POSITIVE_INFINITY));
+    const next = { market, level, spans: cover(held.spans, from, to) };
+    await writeMarket(next);
+    return next;
+  });
 }
 
 async function fill(
   market: string,
   venue: 'binance-spot' | 'binance-perp',
   holes: Span[],
-  get: () => MarketRecord,
-  set: (m: MarketRecord) => void,
-  wrote: () => void,
   signal: AbortSignal,
+  write: (from: number, to: number, trades: AggTrade[]) => Promise<void>,
   filled: (ms: number, back: number, calls: number) => void,
+  asked?: (made: number) => void,
 ): Promise<Stopped | null> {
   const symbol = parseMarket(market)?.symbol;
   if (!symbol) return null;
@@ -100,6 +171,7 @@ async function fill(
     for (const host of hosts) {
       if (calls <= 0 || signal.aborted) return null;
       calls -= 1;
+      asked?.(BACKFILL_CALLS - calls);
       try {
         const name = new URL(host).host;
         const res = await turn((): Promise<Response | number> => {
@@ -142,14 +214,7 @@ async function fill(
       if (trades.length === 0 && page === null) return stopped;
       // As far as the trades reach: a window too busy for the calls left is kept only so far.
       const reached = page === null ? (trades[trades.length - 1]?.time ?? start) + 1 : end;
-      const meta = get();
-      const level = meta.level > 0 ? meta.level : levelFor(trades[0]?.price ?? 1, digitsFor(market, trades[0]?.price ?? 1));
-      const book = new MinuteBook(level, start);
-      for (const t of trades) book.add(t.time, t.price, t.qty, t.buy);
-      await addMinutes(market, book.take(Number.POSITIVE_INFINITY));
-      set({ ...get(), level, spans: cover(get().spans, start, reached) });
-      await writeMarket(get());
-      wrote();
+      await write(start, reached, trades);
       filled(reached - start, start, 1 - calls / BACKFILL_CALLS);
       if (reached < end) return stopped;
     }

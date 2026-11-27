@@ -235,8 +235,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   const [drawError, setDrawError] = createSignal<string | null>(null);
   /** The drawing whose settings dialog is open. */
   const [editing, setEditing] = createSignal<number | null>(null);
-  /** The chart's menu, and the TPO profile it was opened on, if any. */
-  const [menu, setMenu] = createSignal<{ x: number; y: number; tpo?: TpoHover } | null>(null);
+  /** The chart's menu, the TPO profile it was opened on, if any, and the bar with no footprint it may fill. */
+  const [menu, setMenu] = createSignal<{ x: number; y: number; tpo?: TpoHover; fill?: number } | null>(null);
   /** The profile menu's prices, folded out. */
   const [tpoPrices, setTpoPrices] = createSignal(false);
   /** The alert a right-click landed on, and where its menu opens. */
@@ -384,6 +384,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
     if (!footprintOn() && !tpoFlow()) return null;
     if (replaying() && fpNone() && !fpLoading()) return { text: 'no footprint this far back', tip: 'The server keeps footprint minutes for a month, and hours for good only where they were archived. These bars replay as candles.', progress: null };
     const venue = venueLabel(market());
+    const byHand = hand()?.note(market());
+    if (byHand) return byHand;
     if (!browserFootprint()) return fpLoading() ? { text: 'loading footprint…', tip: "The server's recorded footprint for these bars", progress: 'busy' } : null;
     const status = kit()?.recordStatus(market());
     const filling = status?.filling;
@@ -433,6 +435,16 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
   });
   /** The bars and settings the footprint on the chart is of. */
   let fpDrawn = '';
+  /** The footprint's bars on the chart now, oldest first: a right-click looks its bar up in them. */
+  let fpBars: readonly Levels[] = [];
+  /** Bars filled by hand from a right-click on one with no cells (lib/fp-hand). */
+  const hand = createMemo(() => kit()?.handFills());
+  /** The bar a right-click may offer to fill: under the pointer, with nothing of its footprint, or only part. */
+  const fillable = (): number | undefined => {
+    const at = legend();
+    if (!footprintOn() || replaying() || fpLoading() || !at || at.index === null || at.time > Date.now()) return undefined;
+    return hand()?.offers(market(), at.time, fpBars) ? at.time : undefined;
+  };
   createEffect(() => {
     const flow = tpoFlow();
     if (!footprintOn() && !flow) {
@@ -477,6 +489,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         barMs,
         settings,
         (bars, grid, fitted, any) => {
+          fpBars = bars;
           send({ t: 'footprint', id: sid, flat: flatten(bars), grid, fitted });
           setFpNone(!any);
           setFpLoading(false);
@@ -513,6 +526,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
           }
           for (const bar of fp.bars) held.set(bar.time, bar);
           const bars = [...held.values()].sort((a, b) => a.time - b.time);
+          fpBars = bars;
           send({ t: 'footprint', id: sid, flat: flatten(bars), grid: fp.grid, fitted: fp.fitted });
           setFpSince(bars.find((b) => b.levels.length > 0)?.time ?? null);
         } else send({ t: 'footprint', id: sid, flat: new Float64Array(), grid: 0, fitted: true });
@@ -556,6 +570,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
     let barMinutes: Minute[] = [];
     let lastServer = 0;
     const seen = new SeenBars(barMs);
+    const filled = flow ? null : k.filledOver(market_, barMs, settings, tick, () => draw());
     const draw = () => {
       if (dropped) return;
       let bars = shown;
@@ -566,6 +581,8 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
         const bar = minutes.length > 0 ? foldMinutes(minutes, tick, barMs, settings, Math.max(1, Math.round(grid / tick))).bars.find((b) => b.time === barStart) : undefined;
         bars = seen.over(shown, bar, barStart);
       }
+      if (filled) bars = filled.over(bars, grid);
+      fpBars = bars;
       // The bars the worker already holds as they are, on the same grid, are not sent again:
       // twice a second, days of them were copied for the one bar under way.
       let same = 0;
@@ -653,6 +670,7 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
       clearInterval(timer);
       clearInterval(tailTimer);
       offPrints();
+      filled?.stop();
     });
   });
 
@@ -2072,10 +2090,14 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
             }
             // On a TPO profile: MMT's menu for that profile, over the chart's own.
             const profile = tpoShown() ? (legend()?.tpo ?? undefined) : undefined;
-            setMenu({ x: Math.max(0, Math.min(p.x, box.clientWidth - 220)), y: Math.max(0, Math.min(p.y, box.clientHeight - (profile ? 300 : 120))), tpo: profile });
+            const fill = fillable();
+            setMenu({ x: Math.max(0, Math.min(p.x, box.clientWidth - 220)), y: Math.max(0, Math.min(p.y, box.clientHeight - (profile ? 300 : fill === undefined ? 120 : 150))), tpo: profile, fill });
           }}
         >
           {/* A hairline over the chart while the footprint is fetched or filled: how far, or that something is under way. */}
+          <Show when={hand()?.error()} keyed>
+            {(e) => <div class="fp-error" role="status">{e.text}</div>}
+          </Show>
           <Show when={fpProgress()}>
             {(p) => <div class="fp-progress" classList={{ busy: p().share === 'busy' }} style={{ width: p().share === 'busy' ? undefined : `${Math.max(2, Math.round((p().share as number) * 100))}%` }} />}
           </Show>
@@ -2439,6 +2461,18 @@ export function ChartPanel(props: { panel: ChartPanelState; training?: TrainingC
                       <hr />
                     </>
                   )}
+                </Show>
+                <Show when={m().fill !== undefined}>
+                  <button
+                    onClick={() => {
+                      const time = m().fill!;
+                      setMenu(null);
+                      void hand()?.fill(market(), time, tfMs(timeframe()), recorded().get(market()) ?? 0);
+                    }}
+                  >
+                    {tl('Fill footprint')}<span class="dim">{formatClock(m().fill!).slice(0, 5)}</span>
+                  </button>
+                  <hr />
                 </Show>
                 <button
                   onClick={() => {

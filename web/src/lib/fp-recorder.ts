@@ -15,7 +15,7 @@ import { digitsFor } from './alerts';
 import { foldMinutes, foldRecorded, recordedMarkets, type Footprint, type Minute, type Settings } from './footprint';
 import type { Filling, Stopped } from './fp-fill';
 import { cover, levelFor, merge, MINUTE, MinuteBook, pack, toMinute, trimSpans, unpack, type Levels } from './fp-minutes';
-import { addMinutes, forget, prune, readMarket, readMinutes, writeMarket, type MarketRecord } from './fp-store';
+import { addMinutes, alone, forget, prune, readMarket, readMinutes, writeMarket, type MarketRecord } from './fp-store';
 import { parseMarket } from './markets';
 import { recordable, recorderSettings as settings, storeRecorderSettings, type RecorderSettings } from './fp-settings';
 import { listenPrints } from './orderflow';
@@ -235,8 +235,16 @@ async function record(market: string, signal: AbortSignal): Promise<void> {
     if (liveSince) meta = { ...meta, spans: cover(meta.spans, liveSince, now) };
     meta = { ...meta, spans: trimSpans(meta.spans, now - settings().days * DAY) };
     try {
-      await addMinutes(market, finished);
-      if (meta.level > 0) await writeMarket(meta);
+      await alone(market, async () => {
+        await addMinutes(market, finished);
+        // What a fill covered since, this recording's spans keep.
+        const held = await readMarket(market);
+        if (held) {
+          const spans = held.spans.reduce((all, [a, b]) => cover(all, a, b), meta.spans);
+          meta = { ...meta, level: meta.level > 0 ? meta.level : held.level, spans: trimSpans(spans, now - settings().days * DAY) };
+        }
+        if (meta.level > 0) await writeMarket(meta);
+      });
     } catch {
       // A full disk or a closed database: this stretch is not kept.
     }
@@ -260,6 +268,41 @@ async function record(market: string, signal: AbortSignal): Promise<void> {
   await flush(true);
   here.delete(market);
   setStatus(market, null);
+}
+
+/**
+ * One bar the reader asked for, `from..to`, filled from Binance's trade
+ * history into this browser. What there is to say when it did not all come,
+ * and whether to ask again; null when the bar is whole. `tick` is the server's
+ * price step, for a market it records, else 0.
+ */
+export async function fillBar(market: string, from: number, to: number, tick: number, signal: AbortSignal, calls: (made: number) => void): Promise<{ why: string; more: boolean } | null> {
+  const venue = parseMarket(market)?.venue;
+  const none = (why: string, more = false) => ({ why, more });
+  if (venue !== 'binance-spot' && venue !== 'binance-perp') return none('This exchange keeps no trade history to fill from');
+  const now = Date.now();
+  const { days } = settings();
+  if (to <= now - days * DAY) return none(`Older than the ${days} days of footprint this browser keeps (Settings, General)`);
+  // The last two minutes are the recorder's: a tab in the background may not have written them yet.
+  const end = Math.min(to, now - 2 * MINUTE);
+  const start = Math.max(from, now - days * DAY);
+  if (end <= start) return none('This bar is too new: try again in a couple of minutes');
+  try {
+    const { fillRange } = await import('./fp-fill');
+    const { whole, trades, stopped } = await fillRange(market, venue, start, end, tick, signal, calls);
+    if (trades > 0) {
+      channel?.postMessage({ market, full: true });
+      tell(market, true);
+    }
+    if (stopped) {
+      const why = { refused: 'Binance refuses its trade history to this network', throttled: 'Binance is limiting calls from this network, try again later', unreachable: 'Binance did not answer' }[stopped.why];
+      return none(why, trades > 0);
+    }
+    if (!whole) return none('Only part of this bar came: right-click it again for the rest', true);
+    return trades > 0 ? null : none('Binance has no trades for this bar');
+  } catch {
+    return none('The fill failed');
+  }
 }
 
 /** Minutes older than the days kept let go: when recording starts, and now and then after. */

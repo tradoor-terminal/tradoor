@@ -58,6 +58,10 @@ export async function writeMarket(record: MarketRecord): Promise<void> {
   await done(db.transaction('markets', 'readwrite').objectStore('markets').put(record));
 }
 
+/** A market's record and minutes changed by one writer at a time: the recorder and the fills, in any tab. */
+export const alone = <T>(market: string, run: () => Promise<T>): Promise<T> =>
+  typeof navigator !== 'undefined' && navigator.locks ? navigator.locks.request(`tradoor-store:${market}`, run) : run();
+
 /** A market's minutes from `from` to `to`, oldest first. */
 export async function readMinutes(market: string, from: number, to: number): Promise<[number, Levels][]> {
   const db = await open();

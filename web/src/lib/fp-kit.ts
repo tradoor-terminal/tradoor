@@ -7,3 +7,4 @@
 export { MinuteBook, toMinute } from './fp-minutes';
 export { listenPrints } from './orderflow';
 export { onRecorded, recordedFootprint, recordStatus, want } from './fp-recorder';
+export { filledOver, handFills } from './fp-hand';
