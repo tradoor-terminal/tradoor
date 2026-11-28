@@ -125,7 +125,7 @@ export function ValuesPanel(props: { panel: ValuesPanelState }) {
               {(t) => {
                 const chg = () => ((t().close - t().open) / t().open) * 100;
                 return (
-                  <span class="num" classList={{ bull: chg() > 0, bear: chg() < 0 }} data-tip="Since 00:00 UTC, as TradingView counts the day">
+                  <span class="num" classList={{ bull: chg() > 0, bear: chg() < 0 }} data-tip="Since 00:00 UTC">
                     {formatPct(chg())} {tl('today')}
                   </span>
                 );

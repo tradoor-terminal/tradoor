@@ -27,7 +27,7 @@ export const THEMES: readonly ThemePreset[] = [
   {
     id: 'canvas',
     name: 'Canvas',
-    note: "TradingView's own dark: navy, teal and red",
+    note: 'Navy, teal and red',
     colors: {
       background: '#131722', border: '#20242F', text: '#B2B5BE', crosshair: '#9598A1', labelBackground: '#2A2E39',
       bull: '#089981', bear: '#F23645', ribbonFast: '#089981', ribbonSlow: '#F23645', ema200: '#F7A21B',

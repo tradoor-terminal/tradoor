@@ -26,7 +26,7 @@ const STUDIES: Record<string, Described> = {
   vwap: { name: 'Volume Weighted Average Price', category: 'VWAP', keywords: 'session bands deviation value area vah val anchored monthly', about: 'Average price paid since the session, week, month, quarter or year opened, each trade weighted by its size. The first band is the value area, about two thirds of the volume, and last period’s VWAP and value area are labelled at the right. Sessions are UTC days.' },
   vwaplevels: { name: 'VWAP Levels', category: 'VWAP', keywords: 'levels only labels vah val value area weekly monthly quarterly yearly previous pwvah pmval', about: 'The VWAP and value area of the week, month, quarter and year, and of the last of each, as labels at the right edge with no lines: pmVAH is last month’s value area high. Worked out from hourly bars for the day, week and month and daily bars for the quarter and year, so a minute chart has the year’s too.' },
   avwap: { name: 'Anchored VWAP (S/W/M/Y)', category: 'VWAP', keywords: 'multi session weekly monthly yearly', about: 'Volume-weighted average price since the session, week, month and year opened. The session line is drawn on intraday charts only.' },
-  rsi: { name: 'Relative Strength Index', category: 'Momentum', keywords: 'oscillator overbought oversold', about: 'Momentum bounded 0–100. Wilder smoothing, so the values match TradingView exactly.' },
+  rsi: { name: 'Relative Strength Index', category: 'Momentum', keywords: 'oscillator overbought oversold', about: 'Momentum bounded 0–100, with Wilder smoothing as the standard RSI has it.' },
   stochrsi: { name: 'Stochastic RSI', category: 'Momentum', keywords: 'oscillator overbought oversold', about: 'Where RSI sits inside its own recent range. Turns earlier than RSI, and whipsaws more.' },
   macd: { name: 'MACD', category: 'Momentum', keywords: 'moving average convergence divergence histogram oscillator', about: 'The gap between two EMAs, and an EMA of that gap. The histogram is the difference between them.' },
   bb: { name: 'Bollinger Bands', category: 'Volatility', keywords: 'deviation squeeze', about: 'An SMA with a band at N standard deviations, shaded between them. Narrow bands mark the quiet before an expansion.' },
@@ -254,7 +254,7 @@ const OI_LABELS: Record<(typeof OI_VENUES)[number], string> = {
 const PARAMS: Record<string, Record<string, ParamUi>> = {
   bb: { mult: { label: 'Multiplier', hint: 'Standard deviations from the average to each band' } },
   keltner: { mult: { label: 'Multiplier', hint: 'ATRs from the average to each band' }, atr: { label: 'ATR length' } },
-  ichimoku: { conversion: { label: 'Conversion length' }, base: { label: 'Base length' }, span: { label: 'Leading span B length' }, shift: { label: 'Displacement', hint: 'How far the spans run ahead and price runs behind, counted as TradingView counts it: 26 moves them 25 bars' } },
+  ichimoku: { conversion: { label: 'Conversion length' }, base: { label: 'Base length' }, span: { label: 'Leading span B length' }, shift: { label: 'Displacement', hint: 'How far the spans run ahead and price runs behind, counted the usual way: 26 moves them 25 bars' } },
   vpvr: { rows: { label: 'Rows' }, va: { label: 'Value area, %' }, width: { label: 'Width, % of pane' }, side: { label: 'Side', options: ['Right', 'Left'] } },
   volumedelta: { view: { label: 'View', options: ['Each bar', 'Cumulative'] } },
   cvd: {
