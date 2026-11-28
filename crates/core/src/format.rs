@@ -151,34 +151,53 @@ pub fn format_price(v: f64, digits: Option<usize>) -> String {
     grouped
 }
 
+/// A band a short figure is written in: the least size it holds and the unit it
+/// counts in, as powers of ten, its decimals, and the unit's letter or 0. Four
+/// bytes, as the engine's wasm is weighed.
+type Band = [u8; 4];
+
+/// `v` in the first band, largest first, its size reaches as it reads once
+/// rounded: 999,960 to the thousand is `1000K`, so it goes in the band above, `1.0M`.
+fn banded(v: f64, bands: &[Band]) -> String {
+    let ten = |e: u8| 10f64.powi(i32::from(e));
+    let a = v.abs();
+    let mut k = bands.iter().position(|b| a >= ten(b[0])).unwrap_or(bands.len() - 1);
+    while k > 0 && parse_number(&fixed(a / ten(bands[k][1]), usize::from(bands[k][2]))).is_some_and(|r| r * ten(bands[k][1]) >= ten(bands[k - 1][0])) {
+        k -= 1;
+    }
+    let [_, unit, decimals, letter] = bands[k];
+    let mut out = fixed(v / ten(unit), usize::from(decimals));
+    if letter != 0 {
+        out.push(char::from(letter));
+    }
+    out
+}
+
+const TURNOVER: [Band; 5] = [[12, 12, 1, b'T'], [9, 9, 1, b'B'], [6, 6, 1, b'M'], [3, 3, 0, b'K'], [0, 0, 0, 0]];
+
 /// `27.4M`, `1.2B`.
 pub fn format_turnover(v: f64) -> String {
     if !v.is_finite() {
         return "—".to_string();
     }
-    match v.abs() {
-        a if a >= 1e12 => fixed(v / 1e12, 1) + "T",
-        a if a >= 1e9 => fixed(v / 1e9, 1) + "B",
-        a if a >= 1e6 => fixed(v / 1e6, 1) + "M",
-        a if a >= 1e3 => fixed(v / 1e3, 0) + "K",
-        _ => fixed(v, 0),
-    }
+    banded(v, &TURNOVER)
 }
+
+/// Each unit in three bands, so a figure keeps four digits whatever its size.
+const COMPACT: [Band; 13] = [
+    [14, 12, 1, b'T'], [13, 12, 2, b'T'], [12, 12, 3, b'T'],
+    [11, 9, 1, b'B'], [10, 9, 2, b'B'], [9, 9, 3, b'B'],
+    [8, 6, 1, b'M'], [7, 6, 2, b'M'], [6, 6, 3, b'M'],
+    [5, 3, 1, b'K'], [4, 3, 2, b'K'], [3, 3, 3, b'K'],
+    [0, 0, 2, 0],
+];
 
 /// A large figure to four significant-ish digits: `5.327M`, `106.2K`, `12.35`.
 pub fn format_compact(v: f64) -> String {
     if !v.is_finite() {
         return "—".to_string();
     }
-    let (scaled, unit) = match v.abs() {
-        a if a >= 1e12 => (v / 1e12, "T"),
-        a if a >= 1e9 => (v / 1e9, "B"),
-        a if a >= 1e6 => (v / 1e6, "M"),
-        a if a >= 1e3 => (v / 1e3, "K"),
-        _ => return fixed(v, 2),
-    };
-    let decimals = if scaled.abs() >= 100.0 { 1 } else if scaled.abs() >= 10.0 { 2 } else { 3 };
-    fixed(scaled, decimals) + unit
+    banded(v, &COMPACT)
 }
 
 /// Time left until a bar closes: `04:12`, `2:05:33`, or `3d 04h`.
@@ -239,6 +258,25 @@ mod tests {
         assert_eq!(super::format_compact(106_188.6), "106.2K");
         assert_eq!(super::format_compact(12_345_678_901.0), "12.35B");
         assert_eq!(super::format_compact(12.345), "12.35");
+    }
+
+    #[test]
+    fn a_figure_rounding_up_to_a_thousand_of_its_unit_is_written_in_the_next() {
+        use super::{format_compact, format_turnover};
+        assert_eq!(format_compact(999_999.0), "1.000M");
+        assert_eq!(format_compact(999_999_999.0), "1.000B");
+        assert_eq!(format_compact(-999_999.0), "-1.000M");
+        assert_eq!(format_compact(999.999), "1.000K");
+        assert_eq!(format_turnover(999_960.0), "1.0M");
+        assert_eq!(format_turnover(999_960_000.0), "1.0B");
+        assert_eq!(format_turnover(-999_960.0), "-1.0M");
+        assert_eq!(format_turnover(999.6), "1K");
+        // Into a band of fewer decimals within its unit, likewise: four digits, not five.
+        assert_eq!(format_compact(9_999.99), "10.00K");
+        assert_eq!(format_compact(99_999.9), "100.0K");
+        // One that rounds down stays; past the last unit there is none to move to.
+        assert_eq!(format_turnover(999_400.0), "999K");
+        assert_eq!(format_turnover(1e15), "1000.0T");
     }
 
     use super::*;
