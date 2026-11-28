@@ -266,7 +266,7 @@ export type DropZone = 'center' | 'left' | 'right' | 'top' | 'bottom';
 
 export const DEFAULT_STUDIES = 'rsi:14,stochrsi:14:14:3:3';
 export const DEFAULT_TIMEFRAME = '1h';
-/** The coins, then the market around them: the index perpetuals, the VIX, and the crypto market's own measures. */
+/** The coins, then the market around them: the index perpetuals, the VIX, IHSG, and the crypto market's own measures. */
 export const DEFAULT_WATCHLIST = [
   'binance-perp:BTCUSDT',
   'binance-perp:ETHUSDT',
@@ -277,6 +277,7 @@ export const DEFAULT_WATCHLIST = [
   'hyperliquid-perp:SP500USD',
   'hyperliquid-perp:XYZ100USD',
   'index:VIX',
+  'index:IHSG',
   'index:TOTAL',
   'index:TOTAL2',
   'index:TOTAL3',

@@ -33,10 +33,10 @@ const STABLE = new Set([...DOLLARS, 'TUSD', 'DAI', 'USDE', 'USDS', 'USD1', 'PYUS
  * its XYZ100 the Nasdaq-100. Found after a market spelled so: SPX is first the
  * coin SPX6900.
  */
-const ALIASES: Record<string, string> = { SPX: 'SP500', US500: 'SP500', SPX500: 'SP500', NASDAQ: 'XYZ100', NDX: 'XYZ100', NAS100: 'XYZ100', US100: 'XYZ100', NQ: 'XYZ100', ES: 'SP500' };
+const ALIASES: Record<string, string> = { SPX: 'SP500', US500: 'SP500', SPX500: 'SP500', NASDAQ: 'XYZ100', NDX: 'XYZ100', NAS100: 'XYZ100', US100: 'XYZ100', NQ: 'XYZ100', ES: 'SP500', JKSE: 'IHSG', COMPOSITE: 'IHSG' };
 
 /** TradingView's prefixes that name no exchange of ours: `CRYPTOCAP:TOTAL2`, `TVC:VIX`. */
-const PREFIXES = new Set(['CRYPTO', 'INDEX', 'CRYPTOCAP', 'TVC', 'CBOE', 'SP', 'NASDAQ']);
+const PREFIXES = new Set(['CRYPTO', 'INDEX', 'CRYPTOCAP', 'TVC', 'CBOE', 'SP', 'NASDAQ', 'IDX']);
 
 /** A coin under every name it trades as: Binance's 1000SHIB is Bybit's SHIB1000. */
 const coinOf = (base: string): string => base.replace(/^1(?:000)+(?=[A-Z])/, '').replace(/(?<=[A-Z])1(?:000)+$/, '');

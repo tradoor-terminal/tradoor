@@ -13,7 +13,8 @@
 //! Cboe's: its daily bars since 1990 from the CSV it publishes, read every
 //! hour, and its delayed quote every minute — the day's own bar until the
 //! history carries it (`index_bar`), and each new value as a point
-//! (`index_tick`), from which its bars shorter than a day are drawn.
+//! (`index_tick`), from which its bars shorter than a day are drawn. IHSG is
+//! kept apart, in files (`ihsg`).
 //!
 //! Made to answer fast however long the recording grows: the caps are rolled
 //! up by the hour each minute (`index_hour`), so an hour's bars and longer
@@ -23,6 +24,7 @@
 //! each — and `latest` answers a whole watchlist's indices in one request.
 
 use std::collections::{HashMap, VecDeque};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,11 +37,13 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
+use tradoor_core::Interval;
 use tradoor_store::now_ms;
 use tradoor_venues::{Product, Venue};
 
 use crate::api::{ApiError, ApiResult, AppState};
 use crate::dns::Doh;
+use crate::ihsg::{self, Ihsg};
 
 const MINUTE: i64 = 60_000;
 const HOUR: i64 = 60 * MINUTE;
@@ -81,11 +85,13 @@ enum Source {
     Cap(&'static str),
     /// Daily bars kept in `index_bar`, and the value through the day in `index_tick`.
     Quoted,
+    /// Daily bars kept in files (`ihsg`).
+    Filed,
 }
 
 /// Capitalisations in billions of dollars, so a chart's scale reads `2,756.79`
 /// rather than thirteen digits; shares in percent.
-const SERIES: [Series; 10] = [
+const SERIES: [Series; 11] = [
     Series { symbol: "TOTAL", name: "Crypto total market cap, $B", quote: "USD", decimals: 2, source: Source::Cap("total / 1e9") },
     Series { symbol: "TOTAL2", name: "Crypto market cap less Bitcoin, $B", quote: "USD", decimals: 2, source: Source::Cap("(total - btc) / 1e9") },
     Series { symbol: "TOTAL3", name: "Crypto market cap less Bitcoin and Ether, $B", quote: "USD", decimals: 2, source: Source::Cap("(total - btc - eth) / 1e9") },
@@ -96,6 +102,7 @@ const SERIES: [Series; 10] = [
     Series { symbol: "ETH_D", name: "Ether dominance, %", quote: "%", decimals: 2, source: Source::Cap("eth / total * 100") },
     Series { symbol: "USDT_D", name: "Tether dominance, %", quote: "%", decimals: 2, source: Source::Cap("usdt / total * 100") },
     Series { symbol: "VIX", name: "Cboe Volatility Index, delayed", quote: "", decimals: 2, source: Source::Quoted },
+    Series { symbol: ihsg::SYMBOL, name: "IDX Composite, Indonesia, daily", quote: "IDR", decimals: 2, source: Source::Filed },
 ];
 
 fn series(symbol: &str) -> Option<&'static Series> {
@@ -116,6 +123,7 @@ pub struct Indices {
     /// The stablecoins' worth as last read, carried into each row until the next.
     stable: Mutex<Option<f64>>,
     caps: Mutex<Caps>,
+    ihsg: Ihsg,
     /// Moves with every write: an answer worked out before it is stale.
     generation: AtomicU64,
     /// Answers by request, each with the generation it was worked out in.
@@ -131,17 +139,19 @@ struct Caps {
 }
 
 impl Indices {
-    pub fn start(pool: deadpool_postgres::Pool, doh: &Arc<Doh>) -> anyhow::Result<Arc<Self>> {
+    pub fn start(pool: deadpool_postgres::Pool, doh: &Arc<Doh>, data_dir: &Path) -> anyhow::Result<Arc<Self>> {
         let http = reqwest::Client::builder().dns_resolver(doh.resolver()).user_agent(concat!("tradoor/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(30)).build()?;
         let indices = Arc::new(Self {
             pool,
             http,
             stable: Mutex::new(None),
             caps: Mutex::new(Caps::default()),
+            ihsg: Ihsg::open(data_dir)?,
             generation: AtomicU64::new(0),
             answers: std::sync::Mutex::new(HashMap::new()),
         });
         tokio::spawn(indices.clone().run());
+        tokio::spawn(indices.clone().run_ihsg());
         Ok(indices)
     }
 
@@ -169,6 +179,27 @@ impl Indices {
             }
             self.generation.fetch_add(1, Ordering::Relaxed);
             tokio::time::sleep(READ_EVERY).await;
+        }
+    }
+
+    /// Apart from the rest, so a slow answer of Yahoo's holds up no other
+    /// series: after Jakarta's close, and again a quarter hour after a read
+    /// that failed.
+    async fn run_ihsg(self: Arc<Self>) {
+        loop {
+            let mut wait = READ_EVERY;
+            if self.ihsg.due(now_ms()) {
+                match self.ihsg.refresh(&self.http).await {
+                    Ok(()) => {
+                        self.generation.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = format!("{e:#}"), "reading IHSG");
+                        wait = 15 * READ_EVERY;
+                    }
+                }
+            }
+            tokio::time::sleep(wait).await;
         }
     }
 
@@ -245,7 +276,7 @@ impl Indices {
             .iter()
             .filter_map(|s| match s.source {
                 Source::Cap(expr) => Some(format!("SELECT '{}' AS symbol, at, {expr} AS v FROM market_cap WHERE at >= $1 AND at < $2", s.symbol)),
-                Source::Quoted => None,
+                Source::Quoted | Source::Filed => None,
             })
             .collect::<Vec<_>>()
             .join(" UNION ALL ");
@@ -323,6 +354,10 @@ impl Indices {
                     .await
                     .ok()
                     .map(|r| (r.get::<_, Option<f64>>(0), r.get::<_, Option<f64>>(1))),
+                Source::Filed => {
+                    let mut days = self.ihsg.bars(Interval::D1, None, None, 2).into_iter().rev().map(|c| c.close);
+                    Some((days.next(), days.next()))
+                }
             };
             let (last, before) = quote.unwrap_or((None, None));
             let last = last.map(|v| s.round(v));
@@ -568,12 +603,19 @@ impl Indices {
                 step.opening("open_time")
             )
         };
+        if let Source::Filed = s.source {
+            let length = Interval::parse(interval).ok_or_else(|| ApiError::bad_request("no such bar length"))?;
+            let bars = self.ihsg.bars(length, start, end, limit as usize);
+            let bars = bars.iter().map(|c| Value::from(vec![c.open_time as f64, s.round(c.open), s.round(c.high), s.round(c.low), s.round(c.close), c.volume])).collect();
+            return Ok(self.answer(key, generation, bars));
+        }
         let client = self.pool.get().await?;
         let rows = match s.source {
             Source::Cap(_) if hourly => client.query(&rolled("index_hour"), &[&from, &to, &s.symbol]).await?,
             Source::Cap(expr) => client.query(&points("market_cap", expr, ""), &[&from, &to]).await?,
             Source::Quoted if intraday => client.query(&points("index_tick", "value", "AND symbol = $3"), &[&from, &to, &s.symbol]).await?,
             Source::Quoted => client.query(&rolled("index_bar"), &[&from, &to, &s.symbol]).await?,
+            Source::Filed => unreachable!("answered from memory above"),
         };
         let mut bars: Vec<Value> = rows
             .iter()
@@ -586,6 +628,11 @@ impl Indices {
         } else if bars.len() > keep {
             bars.drain(..bars.len() - keep);
         }
+        Ok(self.answer(key, generation, bars))
+    }
+
+    /// `bars` as JSON, kept for the next to ask the same.
+    fn answer(&self, key: String, generation: u64, bars: Vec<Value>) -> Bytes {
         // A tree of numbers always serialises.
         let body = Bytes::from(serde_json::to_vec(&Value::Array(bars)).unwrap_or_default());
         let mut answers = self.answers.lock().unwrap_or_else(|e| e.into_inner());
@@ -593,7 +640,7 @@ impl Indices {
             answers.clear();
         }
         answers.insert(key, (generation, body.clone()));
-        Ok(body)
+        body
     }
 }
 
@@ -618,6 +665,10 @@ pub struct Ask {
 /// bars, as the exchanges answer theirs (see `Indices::bars`).
 pub async fn candles(State(state): State<AppState>, Query(ask): Query<Ask>) -> ApiResult<Response> {
     let s = series(&ask.symbol).ok_or_else(|| ApiError::bad_request("no such index"))?;
+    // Told to a chart; `latest` answers a watchlist's other indices instead, with none of its bars.
+    if matches!(s.source, Source::Filed) && !matches!(ask.interval.as_str(), "1d" | "1w" | "1M") {
+        return Err(ApiError::bad_request("IHSG has daily bars only: choose 1D or longer"));
+    }
     Ok(json(state.indices.bars(s, &ask.interval, ask.start, ask.end, ask.limit.unwrap_or(500)).await?))
 }
 

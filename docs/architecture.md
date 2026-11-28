@@ -276,6 +276,16 @@ so a chart's `end=now` shares that answer too. A symbol is `[A-Z0-9_]`, so BTC.D
 shown and searched with its dot; TradingView's `CRYPTOCAP:` and `TVC:` prefixes
 are read past. Alerts on an index are watched by the page alone.
 
+IHSG, the IDX Composite (`ihsg`), is daily only, from Yahoo Finance's chart
+answer for `^JKSE`, not the exchange's own feed. It is kept in partition files,
+a year to a file, under `{data}/series/index/IHSG/1d/` instead of the database:
+days since 1990, held in memory and folded into weeks and months when asked; a
+chart of anything shorter is told so. Only closed days are kept. The server
+reads the whole history when it starts, then the last month at 17:00 Jakarta on
+weekdays and again at 20:00, for a day that came late or was corrected; a read
+that fails is tried again in a quarter hour. Its bars are counted back in bars,
+not time.
+
 The S&P 500 and the Nasdaq-100 are trade.xyz's perpetuals on Hyperliquid
 (HIP-3) — `SP500USD`, `XYZ100USD`, beside its stocks, commodities and
 currencies — listed with Hyperliquid's coins and asked for by their own names

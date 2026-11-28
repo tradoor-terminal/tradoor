@@ -22,6 +22,7 @@ mod flow;
 mod footprint;
 mod footprint_history;
 mod footprint_lighter;
+mod ihsg;
 mod import;
 mod indices;
 mod journal;
@@ -200,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
             let messenger = messenger::Messenger::load(pool.clone()).await?;
             let telegram = if token.is_empty() { None } else { Some(telegram::Telegram::start(pool.clone(), token, &doh, sessions.clone())?) };
             let catalog = Arc::new(catalog::Catalog::new(cli.binance_spot_rest.clone(), &doh)?);
-            let indices = indices::Indices::start(pool.clone(), &doh)?;
+            let indices = indices::Indices::start(pool.clone(), &doh, &cli.data_dir)?;
             catalog.list_indices(indices.clone());
             catalog.keep_fresh();
             let econ = econ::Calendar::start(&doh)?;

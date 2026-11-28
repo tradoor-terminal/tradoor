@@ -13,6 +13,10 @@ files for closed years, month files for closed months, and day files within
 the current month. When a longer period closes, its file replaces the shorter
 ones. A file never changes once written.
 
+The server's IHSG files (`data/series/index/IHSG/1d/{YYYY}.tdc.gz`) are in the
+same format but are its own: no manifest, and this year's is written again each
+day.
+
 ## manifest.json
 
 ```json
