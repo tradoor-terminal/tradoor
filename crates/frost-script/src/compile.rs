@@ -288,7 +288,7 @@ const CONSTS: [(&str, f64); 13] = [
 ];
 
 /// What a script draws along the bars, at its top level.
-const DRAWS: [&str; 9] = ["plot", "histogram", "hline", "fill", "mark", "background", "barcolor", "overlay", "title"];
+const DRAWS: [&str; 11] = ["plot", "candles", "ohlc", "histogram", "hline", "fill", "mark", "background", "barcolor", "overlay", "title"];
 /// Shapes it keeps and moves, anywhere.
 const SHAPES: [&str; 22] = [
     "line", "label", "box", "delete", "set_x1", "set_y1", "set_x2", "set_y2", "set_xy1", "set_xy2", "set_x", "set_y", "set_xy", "set_text", "set_color", "set_textcolor", "set_width", "get_x1", "get_y1", "get_x2", "get_y2",
@@ -495,6 +495,8 @@ pub enum Run {
     Block(Vec<Run>),
     /// A plot's value, and its colour where it changes from bar to bar.
     Plot(usize, Ex, Option<Ex>),
+    /// Open, high, low and close, and the body's, wicks' and border's colours where given.
+    Candles(Box<[Ex; 4]>, Box<[Option<Ex>; 3]>),
     Mark(usize, Ex),
     Background(usize, Ex),
     BarColor(Ex),
@@ -513,6 +515,15 @@ pub struct PlotSpec {
     pub width: f32,
     pub offset: i32,
     pub per_bar: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CandleSpec {
+    pub title: String,
+    /// Drawn as bars, a tick left for the open and right for the close: `ohlc(…)`.
+    pub ohlc: bool,
+    /// Whether it gives the body's colour, the wicks' and the border's.
+    pub given: [bool; 3],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -539,6 +550,8 @@ pub struct Program {
     pub lists: usize,
     pub body: Vec<Run>,
     pub plots: Vec<PlotSpec>,
+    /// `candles(…)` or `ohlc(…)`, once a script.
+    pub candles: Option<CandleSpec>,
     pub marks: Vec<MarkSpec>,
     pub fills: Vec<(usize, usize, u32)>,
     pub backgrounds: usize,
@@ -1467,6 +1480,31 @@ impl<'a> Compiler<'a> {
                 };
                 self.program.plots.push(PlotSpec { title, kind, style, color, width, offset, per_bar: per_bar.is_some() });
                 Ok(Some(Run::Plot(self.program.plots.len() - 1, value, per_bar)))
+            }
+            "candles" | "ohlc" => {
+                let ohlc = name == "ohlc";
+                let spec: &[&str] = if ohlc { &["open", "high", "low", "close", "title", "color"] } else { &["open", "high", "low", "close", "title", "color", "wickcolor", "bordercolor"] };
+                let a = self.bind(node.at, name, spec, args, named)?;
+                let (Some(o), Some(h), Some(l), Some(c)) = (a[0], a[1], a[2], a[3]) else {
+                    return Err(Error::at(node.at, shape(name, spec)));
+                };
+                if self.program.candles.is_some() {
+                    return Err(Error::at(node.at, "candles(…) or ohlc(…) once a script"));
+                }
+                let title = match a[4] {
+                    None => (if ohlc { "Bars" } else { "Candles" }).to_string(),
+                    Some(t) => title_of(t, self).ok_or_else(|| Error::at(t.at, "a title goes in quotes, as \"Candles\""))?,
+                };
+                if title.chars().count() > MAX_TITLE {
+                    return Err(Error::at(node.at, format!("a title is {MAX_TITLE} characters at most")));
+                }
+                let values = Box::new([self.num(o, true)?, self.num(h, true)?, self.num(l, true)?, self.num(c, true)?]);
+                let mut paint = [None, None, None];
+                for (k, p) in paint.iter_mut().enumerate() {
+                    *p = self.fixed_colour(a.get(5 + k).copied().flatten())?;
+                }
+                self.program.candles = Some(CandleSpec { title, ohlc, given: paint.each_ref().map(Option::is_some) });
+                Ok(Some(Run::Candles(values, Box::new(paint))))
             }
             "fill" => {
                 let spec = ["upper", "lower", "color"];

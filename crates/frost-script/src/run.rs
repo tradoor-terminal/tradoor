@@ -12,7 +12,7 @@ use std::rc::Rc;
 use crate::compile::{math, Ex, Field, Fmt, Keep, ListOp, Order, Program, Ret, Run, Series, ShapeOp, Target, Tx};
 use crate::strategy::{Broker, Report, Signals};
 use crate::syntax::{At, Op};
-use crate::{Bars, BoxArt, Cell, Error, Fill, LabelArt, LineArt, Mark, Output, Plot, Table, MAX_AHEAD, MAX_BOXES, MAX_LABELS, MAX_LINES, MAX_LIST, MAX_LOOKBACK, MAX_LOOP, MAX_MARKETS, MAX_STEPS, TABLE_COLUMNS, TABLE_ROWS};
+use crate::{Bars, BoxArt, Candles, Cell, Error, Fill, LabelArt, LineArt, Mark, Output, Plot, Table, MAX_AHEAD, MAX_BOXES, MAX_LABELS, MAX_LINES, MAX_LIST, MAX_LOOKBACK, MAX_LOOP, MAX_MARKETS, MAX_STEPS, TABLE_COLUMNS, TABLE_ROWS};
 use tradoor_core::format::fixed;
 use tradoor_core::num::Within;
 use tradoor_core::time::{civil, month_index, week_index, weekday, year_of, DAY};
@@ -592,6 +592,9 @@ struct Machine<'a> {
     steps: u64,
     plots: Vec<Vec<f64>>,
     plot_colors: Vec<Option<Vec<u32>>>,
+    candles: Option<Vec<[f64; 4]>>,
+    /// The body's, wicks' and border's colours a bar, each where the script gives it.
+    candle_paint: [Option<Vec<u32>>; 3],
     marks: Vec<Vec<bool>>,
     backgrounds: Vec<Vec<u32>>,
     bar_colors: Option<Vec<u32>>,
@@ -640,6 +643,8 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
         steps: 0,
         plots: vec![vec![NA; n]; p.plots.len()],
         plot_colors: p.plots.iter().map(|s| s.per_bar.then(|| vec![0; n])).collect(),
+        candles: p.candles.as_ref().map(|_| vec![[NA; 4]; n]),
+        candle_paint: [0, 1, 2].map(|k| p.candles.as_ref().filter(|c| c.given[k]).map(|_| vec![0; n])),
         marks: vec![vec![false; n]; p.marks.len()],
         backgrounds: vec![vec![0; n]; p.backgrounds],
         bar_colors: p.bar_colors.then(|| vec![0; n]),
@@ -691,6 +696,7 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
         .zip(m.plot_colors)
         .map(|((s, values), colors)| Plot { title: s.title.clone(), kind: s.kind, style: s.style, color: s.color, width: s.width, offset: s.offset, values, colors })
         .collect();
+    let candles = p.candles.as_ref().zip(m.candles).map(|(spec, bars)| Candles { title: spec.title.clone(), ohlc: spec.ohlc, bars, paint: m.candle_paint });
     let marks = p.marks.iter().zip(m.marks).map(|(s, hits)| Mark { text: s.text.clone(), above: s.above, color: s.color, hits }).collect();
     let fills = p.fills.iter().map(|(upper, lower, color)| Fill { upper: *upper, lower: *lower, color: *color }).collect();
     let reach = |x: f64| x.within(-MAX_AHEAD, n as f64 - 1.0 + MAX_AHEAD);
@@ -700,7 +706,7 @@ pub fn run_with<'a>(p: &Program, bars: &'a Bars<'a>, decimals: u8, broker: Optio
     let boxes = m.shapes.boxes.into_iter().map(|(_, b)| b).filter(|b| ok(&[b.x1, b.y1, b.x2, b.y2])).map(|b| BoxArt { x1: reach(b.x1), x2: reach(b.x2), ..b }).collect();
     let table = (!m.cells.is_empty()).then_some(Table { down: p.table.0, across: p.table.1, cells: m.cells });
     let report = m.broker.map(|b| b.finish(bars));
-    Ok((Output { own_pane: p.own_pane, plots, fills, marks, backgrounds: m.backgrounds, bar_colors: m.bar_colors, lines, labels, boxes, table, wanted: m.wanted.iter().map(|w| w.to_string()).collect(), read: bars.others.iter().zip(&m.read).filter(|(_, r)| **r).map(|(o, _)| o.market.to_string()).collect(), overlay: p.overlay, title: p.title.clone() }, report))
+    Ok((Output { own_pane: p.own_pane, plots, candles, fills, marks, backgrounds: m.backgrounds, bar_colors: m.bar_colors, lines, labels, boxes, table, wanted: m.wanted.iter().map(|w| w.to_string()).collect(), read: bars.others.iter().zip(&m.read).filter(|(_, r)| **r).map(|(o, _)| o.market.to_string()).collect(), overlay: p.overlay, title: p.title.clone() }, report))
 }
 
 /// `v` as a text: a whole number bare, else up to eight decimals with no zeros left over.
@@ -833,6 +839,20 @@ impl Machine<'_> {
                     if let Some(c) = c {
                         let c = colour(self.ex(c)?);
                         if let Some(cell) = self.plot_colors.get_mut(*index).and_then(|p| p.as_mut()).and_then(|p| p.get_mut(self.i)) {
+                            *cell = c;
+                        }
+                    }
+                }
+                Run::Candles(ohlc, paint) => {
+                    let bar = [self.ex(&ohlc[0])?, self.ex(&ohlc[1])?, self.ex(&ohlc[2])?, self.ex(&ohlc[3])?];
+                    let i = self.i;
+                    if let Some(cell) = self.candles.as_mut().and_then(|c| c.get_mut(i)) {
+                        *cell = bar;
+                    }
+                    for (k, e) in paint.iter().enumerate() {
+                        let Some(e) = e else { continue };
+                        let c = colour(self.ex(e)?);
+                        if let Some(cell) = self.candle_paint[k].as_mut().and_then(|c| c.get_mut(i)) {
                             *cell = c;
                         }
                     }

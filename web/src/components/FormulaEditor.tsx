@@ -388,7 +388,7 @@ export function FormulaEditor(props: { id?: string; seed?: { name: string; sourc
                     <code>abs sqrt log exp pow round floor ceil min max clamp nz isna</code>.
                   </p>
                   <p>
-                    {tl('Drawing:')} <code>plot(value, "Title", colour, width)</code>, <code>histogram</code>, <code>hline(80, "Upper")</code>, <code>fill("Upper", "Lower")</code>, <code>mark(condition, "Buy", below, green)</code>. <code>pane own</code> {tl('draws below the chart. Settings:')} <code>input length = 14 min 2 max 500 "Length"</code>.
+                    {tl('Drawing:')} <code>plot(value, "Title", colour, width)</code>, <code>histogram</code>, <code>candles(open, high, low, close)</code>, <code>hline(80, "Upper")</code>, <code>fill("Upper", "Lower")</code>, <code>mark(condition, "Buy", below, green)</code>. <code>pane own</code> {tl('draws below the chart. Settings:')} <code>input length = 14 min 2 max 500 "Length"</code>.
                   </p>
                   <p>
                     {tl('A strategy, for the chart\'s strategy tester:')} <code>long(condition)</code>, <code>short(condition)</code>, <code>exit(condition)</code>, <code>stop(price)</code>, <code>target(price)</code>; <code>inlong inshort entryprice barsheld</code> {tl('read its position.')}

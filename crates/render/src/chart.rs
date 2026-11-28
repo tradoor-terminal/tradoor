@@ -1120,6 +1120,36 @@ impl Chart {
                     };
                     study.lines.push(line);
                 }
+                ["candles", ohlc, colored, wicks, borders, title] => {
+                    let mut columns = [&[][..]; 4];
+                    for c in &mut columns {
+                        let Some(xs) = take(n) else { return };
+                        *c = xs;
+                    }
+                    study.candles = (0..n).map(|i| Some([columns[0][i], columns[1][i], columns[2][i], columns[3][i]]).filter(|b| b.iter().all(|v| v.is_finite()))).collect();
+                    for (given, into) in [(colored, &mut art.candle_colors), (wicks, &mut art.wick_colors), (borders, &mut art.border_colors)] {
+                        if *given == "1" {
+                            let Some(c) = take(n) else { return };
+                            *into = colours(c);
+                        }
+                    }
+                    art.ohlc = *ohlc == "1";
+                    // Its close as a line not drawn: the legend's value and the badge on the scale.
+                    study.lines.push(StudyLine {
+                        key: FORMULA_LINES[study.lines.len() % FORMULA_LINES.len()],
+                        label: (*title).to_string(),
+                        kind: LineType::Line,
+                        values: columns[3].iter().map(|v| v.is_finite().then_some(*v)).collect(),
+                        style: LineStyle::None,
+                        pattern: Pattern::Solid,
+                        color: None,
+                        width: 1.0,
+                        badge: true,
+                        rgba: None,
+                        bar_rgba: None,
+                        dots: false,
+                    });
+                }
                 ["fill", upper, lower, color] => {
                     let (Ok(a), Ok(b)) = (upper.parse::<usize>(), lower.parse::<usize>()) else { continue };
                     let (Some(a), Some(b)) = (FORMULA_LINES.get(a), FORMULA_LINES.get(b)) else { continue };
@@ -2615,7 +2645,7 @@ impl Chart {
                     }
                 }
             }
-            self.paint_study_candles(f, &pane.scale, &study.candles, i0, i1, body, &study.id);
+            self.paint_study_candles(f, &pane.scale, &study.candles, i0, i1, body, &study.id, study.art.as_deref());
             // A line can run past the last bar: to what is on screen, not to the bars.
             let far = (to.ceil() + 1.0).max(0.0) as usize;
             for fill in &study.fills {
@@ -2851,7 +2881,9 @@ impl Chart {
             for (li, line) in study.lines.iter().enumerate().filter(|(_, l)| l.kind == LineType::Line && l.badge && !self.styles.of(&study.id, l.key).off) {
                 if let Some(v) = last_value(&line.values) {
                     // Candles take the colour of the last one, as the price badge does.
+                    let given = study.art.as_ref().and_then(|a| a.candle_colors.iter().rev().find(|c| **c != 0)).map(|c| Color::rgba(*c));
                     let color = match study.candles.iter().rev().flatten().next() {
+                        Some(_) if given.is_some() => given.unwrap_or(t.bull),
                         Some(b) if b[3] >= b[0] => self.styles.color(&study.id, "up", t.bull),
                         Some(_) => self.styles.color(&study.id, "down", t.bear),
                         None => self.line_color(&study.id, line, index, li),
@@ -3191,22 +3223,50 @@ impl Chart {
         }
     }
 
-    /// A study's own candles — open interest — in its pane, coloured by whether it rose.
+    /// A study's own candles — open interest, a script's — in its pane, coloured by whether
+    /// they rose, or bar by bar as a script says; as bars, a tick left for the open and right for the close.
     #[allow(clippy::too_many_arguments)]
-    fn paint_study_candles(&self, f: &mut Frame, scale: &PriceScale, bars: &[Option<[f64; 4]>], i0: usize, i1: usize, body: f32, owner: &str) {
+    fn paint_study_candles(&self, f: &mut Frame, scale: &PriceScale, bars: &[Option<[f64; 4]>], i0: usize, i1: usize, body: f32, owner: &str, art: Option<&tradoor_core::studies::FormulaArt>) {
         let t = &self.theme;
         let wick = (1.0 / f.dpr).max(1.0);
         let (up, down) = (self.styles.color(owner, "up", t.bull), self.styles.color(owner, "down", t.bear));
+        let given = |list: Option<&Vec<u32>>, i: usize| list.filter(|l| !l.is_empty()).map(|l| l.get(i).copied().unwrap_or(0));
+        let (ohlc, bodies, wicks, borders) = match art {
+            Some(a) => (a.ohlc, Some(&a.candle_colors), Some(&a.wick_colors), Some(&a.border_colors)),
+            None => (false, None, None, None),
+        };
         // Most studies have no candles: an empty list must not be indexed at all.
         for (i, bar) in bars.iter().enumerate().take(i1.saturating_add(1)).skip(i0) {
             let Some([o, h, l, c]) = *bar else { continue };
+            // A colour of na from the script: no candle on that bar.
+            let color = match given(bodies, i) {
+                Some(0) => continue,
+                Some(rgba) => Color::rgba(rgba),
+                None if c >= o => up,
+                None => down,
+            };
+            let wick_color = match given(wicks, i) {
+                Some(rgba) => Color::rgba(rgba),
+                None => color,
+            };
             let x = f.snap(self.time.x(i as f64) as f32);
-            let color = if c >= o { up } else { down };
             let (yh, yl, yo, yc) = (scale.y(h) as f32, scale.y(l) as f32, scale.y(o) as f32, scale.y(c) as f32);
+            if ohlc {
+                let (arm, w) = ((body / 2.0).max(1.0), (body / 6.0).within(wick, 3.0).round());
+                f.vline(x, yh, yl, w, color);
+                f.hline(x - arm, x, f.snap(yo), w, color);
+                f.hline(x, x + arm, f.snap(yc), w, color);
+                continue;
+            }
             let (top, bottom) = (yo.min(yc), yo.max(yc));
-            f.vline(x, yh, yl, wick, color);
+            if wick_color.a > 0 {
+                f.vline(x, yh, yl, wick, wick_color);
+            }
             if body >= 2.0 {
                 f.crisp_rect(x - body / 2.0, top, body, (bottom - top).max(1.0 / f.dpr), color);
+                if let Some(rgba) = given(borders, i).filter(|c| *c != 0) {
+                    f.stroke_rect(x - body / 2.0, top, body, (bottom - top).max(1.0 / f.dpr), wick, Color::rgba(rgba));
+                }
             }
         }
     }
@@ -5308,6 +5368,35 @@ mod tests {
         c.set_formula("fx-tradoor.cvdaggregated", "CVD Aggregated", "pane\t1\nplot\tline\t-\t15\t0\t0\t0\tBinance\nplot\tline\t-\t15\t0\t0\t0\tTotal\n", &values, false);
         c.render(1_800_000_000_000);
         assert!(c.panes.iter().all(|p| !p.over) && c.panes.len() == stacked + 1);
+    }
+
+    #[test]
+    fn a_formulas_candles_and_bars_draw_in_its_pane_in_the_colours_it_gives() {
+        let mut c = chart();
+        let n = c.candles().len();
+        let (green, gray) = (0x26a6_9aff_u32, 0x7878_78ff_u32);
+        let mut values = Vec::new();
+        for shift in [0.0, 10.0, -10.0, 5.0] {
+            values.extend((0..n).map(|i| if i == 2 { f64::NAN } else { 100.0 + i as f64 + shift }));
+        }
+        // Bodies: none on bar 4, green on the rest; wicks gray.
+        values.extend((0..n).map(|i| if i == 4 { 0.0 } else { f64::from(green) }));
+        values.extend(vec![f64::from(gray); n]);
+        c.set_formula("fx-k", "Mine", "pane\t1\ncandles\t0\t1\t1\t0\tShifted\n", &values, false);
+        let study = c.formulas.iter().find(|s| s.id == "fx-k").expect("kept");
+        assert_eq!(study.candles.len(), n);
+        assert_eq!(study.candles[1], Some([101.0, 111.0, 91.0, 106.0]));
+        assert_eq!(study.candles[2], None, "a value missing: no candle");
+        assert_eq!((study.lines.len(), study.lines[0].label.as_str(), study.lines[0].style, study.lines[0].values[1]), (1, "Shifted", LineStyle::None, Some(106.0)));
+        let art = study.art.as_ref().expect("its colours");
+        assert!(!art.ohlc && art.candle_colors[4] == 0 && art.wick_colors[0] == gray && art.border_colors.is_empty());
+        let candles = c.render(1_800_000_000_000).positions.len();
+        c.set_formula("fx-k", "Mine", "pane\t1\ncandles\t1\t0\t0\t0\tBars\n", &values[..4 * n], false);
+        assert!(c.formulas[0].art.as_ref().is_some_and(|a| a.ohlc));
+        let bars = c.render(1_800_000_000_000).positions.len();
+        c.set_formula("fx-k", "Mine", "pane\t1\nplot\tline\t0\t15\t0\t0\t0\tNone\n", &values[..n], false);
+        let none = c.render(1_800_000_000_000).positions.len();
+        assert!(candles > none && bars > none, "{candles} and {bars} against {none}");
     }
 
     #[test]

@@ -175,6 +175,9 @@ plot(value, title, color, width, style, offset)
   plot(x, "X", x > x[1] ? green : red). offset in bars: 26 draws ahead.
 histogram(value, title, color, offset)          plot.style_histogram/columns
 hline(value, title, color, width, style)        dashed unless another style
+candles(open, high, low, close, title, color, wickcolor, bordercolor)
+                                                plotcandle; na colour skips a bar
+ohlc(open, high, low, close, title, color)      plotbar; one candles or ohlc a script
 fill("Title A", "Title B", color)               an opaque colour is shaded
 mark(condition, "Text", above or below, color)  plotshape, plotchar, plotarrow
 background(color)                               bgcolor; opaque is shaded

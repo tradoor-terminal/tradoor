@@ -679,3 +679,27 @@ fn obv_adds_the_volume_of_a_bar_that_closes_up_and_takes_away_one_that_closes_do
     assert!((step - c[up].volume * c[up].close).abs() < 1e-6 * step.abs(), "in dollars, each bar's volume at its close");
     assert_eq!(usd.title.as_deref(), Some("OBV · SMA 20 · USD"));
 }
+
+#[test]
+fn candles_and_ohlc_bars_draw_four_values_a_bar_in_the_colours_given() {
+    let c = candles();
+    let out = check("pane own\nup = close >= open\ncandles(open - 100, high - 100, low - 100, bar % 2 == 0 ? na : close - 100, \"Shifted\", up ? green : red, wickcolor = gray, bordercolor = up ? na : black)").unwrap();
+    let k = out.candles.unwrap();
+    assert!(!k.ohlc);
+    assert_eq!(k.title, "Shifted");
+    assert_eq!(k.bars[1], [c[1].open - 100.0, c[1].high - 100.0, c[1].low - 100.0, c[1].close - 100.0]);
+    assert!(k.bars[0][3].is_nan());
+    let [colors, wicks, borders] = k.paint.map(Option::unwrap);
+    let up = c[1].close >= c[1].open;
+    assert_ne!(colors[1], 0);
+    assert_eq!(wicks[1], wicks[2]);
+    assert_eq!(borders[1] == 0, up);
+    // Not coloured: the chart's up and down, and no wick or border of their own.
+    let bare = check("ohlc(open, high, low, close)").unwrap().candles.unwrap();
+    assert!(bare.ohlc && bare.paint.iter().all(Option::is_none));
+    assert_eq!(bare.title, "Bars");
+    assert!(check("ohlc(open, high, low, close, \"B\", blue, wickcolor = red)").is_err());
+    fails("candles(open, high, low, close)\nohlc(open, high, low, close)", 2, "once a script");
+    fails("candles(open, high, low)", 1, "candles(open, high, low, close");
+    fails("if close > open {\n  candles(open, high, low, close)\n}", 2, "outside if");
+}

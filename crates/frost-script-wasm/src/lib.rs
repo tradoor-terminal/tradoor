@@ -12,6 +12,8 @@
 //! pane    1
 //! plot    line  4278190335  15  0  0  0  RSI    kind, colour, width in tenths, style, offset, coloured a bar each, title
 //!                                                 + a value a bar, then a colour a bar where it is coloured so
+//! candles 0     1    0  0  Shifted              bars (ohlc), body coloured, wicks, borders, title
+//!                                                 + open, high, low, close a bar each, then a colour a bar for each one given
 //! fill    0     2    4278190335                  upper, lower, colour
 //! mark    0     4278190335   Buy                 above, colour, text      + 1 or 0 a bar
 //! bg                                              a colour a bar
@@ -147,6 +149,16 @@ fn drawing(out: &Output, n: usize) -> (String, Vec<f64>) {
         t += &format!("plot\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n", kind(p.kind), colour(p.color), tenths(p.width), style(p.style), p.offset, u8::from(p.colors.is_some()), clean(&p.title));
         values.extend_from_slice(&p.values);
         if let Some(c) = &p.colors {
+            values.extend(c.iter().map(|c| f64::from(*c)));
+        }
+    }
+    if let Some(k) = &out.candles {
+        let [a, b, c] = k.paint.each_ref().map(|p| u8::from(p.is_some()));
+        t += &format!("candles\t{}\t{a}\t{b}\t{c}\t{}\n", u8::from(k.ohlc), clean(&k.title));
+        for j in 0..4 {
+            values.extend(k.bars.iter().map(|b| b[j]));
+        }
+        for c in k.paint.iter().flatten() {
             values.extend(c.iter().map(|c| f64::from(*c)));
         }
     }

@@ -212,6 +212,19 @@ pub struct Plot {
     pub colors: Option<Vec<u32>>,
 }
 
+/// `candles(open, high, low, close, …)` or `ohlc(…)`: a candle or a bar each, drawn as the chart's are.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Candles {
+    pub title: String,
+    /// Bars rather than candles: a tick left for the open, right for the close.
+    pub ohlc: bool,
+    /// Open, high, low, close a bar; NaN in any where there is no candle.
+    pub bars: Vec<[f64; 4]>,
+    /// A colour a bar for each the script gives, else None: the body's (0 no candle; else the
+    /// chart's up and down), the wicks' (0 none; else the body's), the border's (0 none; else none).
+    pub paint: [Option<Vec<u32>>; 3],
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fill {
     pub upper: usize,
@@ -295,6 +308,7 @@ pub struct Table {
 pub struct Output {
     pub own_pane: bool,
     pub plots: Vec<Plot>,
+    pub candles: Option<Candles>,
     pub fills: Vec<Fill>,
     pub marks: Vec<Mark>,
     /// Each a colour a bar behind the chart; 0 where there is none.

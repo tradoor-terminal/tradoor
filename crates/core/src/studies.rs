@@ -485,6 +485,12 @@ pub struct FormulaArt {
     pub cells: Vec<ArtCell>,
     /// `overlay(height, gap)`: drawn in the candle pane along its foot, this share of it tall, the candles kept the gap above.
     pub overlay: Option<(f32, f32)>,
+    /// The study's own candles drawn as bars: `ohlc(…)`.
+    pub ohlc: bool,
+    /// Its own candles' colours a bar each, where the script gives them (0 none): body, wick, border.
+    pub candle_colors: Vec<u32>,
+    pub wick_colors: Vec<u32>,
+    pub border_colors: Vec<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -2,7 +2,7 @@
  * What an AI conversion of a Pine Script v6 script tends to leave behind,
  * written as Frost Script: `ta.` and `math.` names, `color.new`, `:=`, `var`
  * and typed declarations, `input.int(…)`, blocks set off by indentation alone,
- * `=>` functions, `[a, b] =`, `switch`, `bgcolor`, `plotshape`, a strategy's
+ * `=>` functions, `[a, b] =`, `switch`, `bgcolor`, `plotshape`, `plotcandle`, a strategy's
  * `strategy.entry` and the rest. Each change is said, and so is anything it
  * cannot carry over, for the reader to see before saving. Text inside quotes is
  * never touched. Loaded with the editor.
@@ -459,6 +459,15 @@ export function pineLeftovers(src: string): Mended {
       const where = PLACE[(arg(c, 3, 'location') ?? '').trim()] ?? 'below';
       const colour = arg(c, f === 'plotchar' ? 4 : 4, 'color');
       return `mark(${cond}, ${short}, ${where === 'above' ? 'above' : 'below'}${colour ? `, ${colour}` : ''})`;
+    });
+  }
+  for (const [f, to] of [['plotcandle', 'candles'], ['plotbar', 'ohlc']] as const) {
+    code = rewriteCalls(code, f, (c) => {
+      changes.add(`${f}(…) written as ${to}(…)`);
+      const ohlc = ['open', 'high', 'low', 'close'].map((n, i) => arg(c, i, n) ?? 'na');
+      const title = arg(c, 4, 'title');
+      const named = [['color', arg(c, 5, 'color')], ...(f === 'plotcandle' ? [['wickcolor', arg(c, 6, 'wickcolor')], ['bordercolor', arg(c, 9, 'bordercolor')]] : [])].filter(([, v]) => v).map(([k, v]) => `${k} = ${v}`);
+      return `${to}(${[...ohlc, ...(title ? [title] : []), ...named].join(', ')})`;
     });
   }
   code = rewriteCalls(code, 'hline', (c) => {

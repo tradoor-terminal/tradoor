@@ -43,6 +43,12 @@ Deno.test('Pine’s leftovers written as Frost Script', () => {
   assert(!t.includes('indicator('));
 });
 
+Deno.test('plotcandle and plotbar written as candles and ohlc', () => {
+  const t = pineLeftovers(['plotcandle(open, high, low, close, title="Title", color=close >= open ? color.green : color.red, wickcolor=color.gray, bordercolor=na)', 'plotbar(o, h, l, c, "Bars", color.blue)'].join('\n')).text;
+  assertStringIncludes(t, 'candles(open, high, low, close, "Title", color = close >= open ? green : red, wickcolor = gray, bordercolor = na)');
+  assertStringIncludes(t, 'ohlc(o, h, l, c, "Bars", color = blue)');
+});
+
 Deno.test('a strategy’s orders, functions and switch', () => {
   const m = pineLeftovers(['fast(x) => ta.ema(x, 9)', 'pick(n) =>', '    switch n', '        1 => "one"', '        => "many"', 'if ta.crossover(close, fast(close))', '    strategy.entry("L", strategy.long)', 'if strategy.position_size > 0 and close < open', '    strategy.close("L")', 'strategy.exit("x", "L", stop=low[1], limit=high * 1.02)'].join('\n'));
   const t = m.text;
