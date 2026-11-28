@@ -50,8 +50,11 @@ export function candleStyles(theme: Record<string, string | undefined>): string 
   else if (theme.wickUp || theme.wickDown) out.push(`price/wickUp=${theme.wickUp ?? ''},1`, `price/wickDown=${theme.wickDown ?? ''},1`);
   if (on(CANDLE_PARTS.border, '0')) out.push(`price/borderUp=${theme.borderUp ?? ''},1`, `price/borderDown=${theme.borderDown ?? ''},1`);
   if (on(CANDLE_PARTS.previous, '0')) out.push('price/prev=1');
-  // The grid: off unless `grid` is 1, in `gridColor` or the grid and borders' own.
-  if (theme.grid === '1') out.push(`chart/grid=${theme.gridColor ?? ''},1`);
+  // The grid: off unless `grid` is 1, in `gridColor` or the grid and borders' own;
+  // both ways, or (`gridAxes`) only the level lines (1) or only the upright ones (2).
+  if (theme.grid === '1') out.push(`chart/grid=${theme.gridColor ?? ''},1`, `chart/gridAxes=${theme.gridAxes ?? 0}`);
+  // The background fading from its own colour at the top to `gradientColor` at the foot (Settings sets one with the switch).
+  if (theme.gradient === '1') out.push(`chart/gradient=${theme.gradientColor},1`);
   return out.join(';');
 }
 

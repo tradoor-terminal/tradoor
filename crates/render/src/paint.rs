@@ -149,6 +149,18 @@ impl Frame {
         self.triangle((x + w, y), (x + w, y + h), (x, y + h), color);
     }
 
+    /// A rectangle fading from `top` at its upper edge to `bottom` at its lower.
+    pub fn gradient_rect(&mut self, x: f32, y: f32, w: f32, h: f32, top: Color, bottom: Color) {
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        for (a, b, c) in [((x, y, top), (x + w, y, top), (x, y + h, bottom)), ((x + w, y, top), (x + w, y + h, bottom), (x, y + h, bottom))] {
+            self.vertex(a.0, a.1, a.2);
+            self.vertex(b.0, b.1, b.2);
+            self.vertex(c.0, c.1, c.2);
+        }
+    }
+
     pub fn snap(&self, v: f32) -> f32 {
         (v * self.dpr).round() / self.dpr
     }

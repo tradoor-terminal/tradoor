@@ -131,19 +131,56 @@ function CandleColours() {
   );
 }
 
-/** The chart's grid, kept with the theme: on (`1`) or off, the default, and its colour. */
-const GRID = { on: 'grid', color: 'gridColor' } as const;
+/** The chart's grid, kept with the theme: on (`1`) or off, the default, which way, and its colour. */
+const GRID = { on: 'grid', color: 'gridColor', axes: 'gridAxes' } as const;
+const GRID_AXES = [
+  { value: '0', label: 'Both', tip: 'Lines at each price and each time' },
+  { value: '1', label: '─', tip: 'Level lines only, at each price' },
+  { value: '2', label: '│', tip: 'Upright lines only, at each time' },
+];
 
-/** The grid behind the chart: off unless ticked, in the grid and borders' colour unless given its own. */
+/** The grid behind the chart: off unless ticked, both ways or one, in the grid and borders' colour unless given its own. */
 function GridColour() {
   const on = () => doc.theme[GRID.on] === '1';
+  const axes = () => doc.theme[GRID.axes] ?? '0';
   return (
     <div class="candle-part" classList={{ off: !on() }}>
       <label class="check">
         <input type="checkbox" checked={on()} onChange={() => setThemeValue(GRID.on, on() ? null : '1')} />
         {tl('Grid lines')}
       </label>
+      <div class="seg-mini">
+        <For each={GRID_AXES}>
+          {(a) => (
+            <button classList={{ on: axes() === a.value }} data-tip={tl(a.tip)} aria-label={tl(a.tip)} onClick={() => setThemeValue(GRID.axes, a.value === '0' ? null : a.value)}>
+              {tl(a.label)}
+            </button>
+          )}
+        </For>
+      </div>
       <ChipSwatch name={GRID.color} fallback={() => doc.theme.border ?? CHART_THEME.find((t) => t.name === 'border')!.value} tip="Grid colour" />
+    </div>
+  );
+}
+
+/** The background fading, top to foot, from its own colour to a second: off unless ticked. */
+function BackgroundFade() {
+  const on = () => doc.theme.gradient === '1';
+  return (
+    <div class="candle-part" classList={{ off: !on() }}>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={on()}
+          onChange={() => {
+            // The foot's colour goes with the switch: the engine is told one, never left to guess.
+            if (!on() && !doc.theme.gradientColor) setThemeValue('gradientColor', doc.theme.labelBackground ?? CHART_THEME.find((t) => t.name === 'labelBackground')!.value);
+            setThemeValue('gradient', on() ? null : '1');
+          }}
+        />
+        {tl('Background fades to')}
+      </label>
+      <ChipSwatch name="gradientColor" fallback={() => doc.theme.labelBackground ?? CHART_THEME.find((t) => t.name === 'labelBackground')!.value} tip="The colour at the foot" />
     </div>
   );
 }
@@ -585,6 +622,7 @@ function ThemesSection() {
                 <p>{tl(g.hint)}</p>
                 <Show when={g.group === 'canvas'}>
                   <GridColour />
+                  <BackgroundFade />
                 </Show>
                 <div class="swatches one">
                   <For each={chartColours(g.group)}>{(t) => <Swatch name={t.name} label={tl(t.label)} fallback={t.value} />}</For>

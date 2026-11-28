@@ -13,6 +13,13 @@ Deno.test('the candles as they always were send nothing; each part changed sends
 
 Deno.test('the grid is off unless switched on, in the grid and borders’ colour unless given one', () => {
   assertEquals(candleStyles({ gridColor: '#ff0000' }), '');
-  assertEquals(candleStyles({ grid: '1' }), 'chart/grid=,1');
-  assertEquals(candleStyles({ grid: '1', gridColor: '#334433' }), 'chart/grid=#334433,1');
+  assertEquals(candleStyles({ grid: '1' }), 'chart/grid=,1;chart/gridAxes=0');
+  assertEquals(candleStyles({ grid: '1', gridColor: '#334433' }), 'chart/grid=#334433,1;chart/gridAxes=0');
+});
+
+Deno.test('the grid one way only, and a background fading to a second colour', () => {
+  assertEquals(candleStyles({ grid: '1', gridAxes: '2' }), 'chart/grid=,1;chart/gridAxes=2');
+  assertEquals(candleStyles({ grid: '1' }), 'chart/grid=,1;chart/gridAxes=0');
+  assertEquals(candleStyles({ gridAxes: '1' }), '', 'no grid, no direction');
+  assertEquals(candleStyles({ gradient: '1', gradientColor: '#102030' }), 'chart/gradient=#102030,1');
 });

@@ -462,10 +462,16 @@ input.box:focus { border-color: var(--primary); outline: 0; }
 .swatch:hover { background: var(--surface-2); }
 .swatch.changed .name { color: var(--text); }
 .color-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.color-group { padding: 10px 10px 8px; border: 1px solid var(--border); background: var(--surface-2); }
+.color-group { min-width: 0; padding: 10px 10px 8px; border: 1px solid var(--border); background: var(--surface-2); }
 .color-group h4 { margin: 0; color: var(--text); font-size: .71875rem; font-weight: 600; }
 .color-group p { margin: 2px 0 8px; color: var(--dim); font-size: .625rem; line-height: 1.4; }
-.color-group .swatches { gap: 2px; }
+.color-group .swatches { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.seg-mini { display: flex; flex: none; border: 1px solid var(--border); }
+.seg-mini button { min-width: 24px; padding: 3px 6px; font-size: .625rem; color: var(--dim); }
+.seg-mini button + button { border-left: 1px solid var(--border); }
+.seg-mini button:hover { color: var(--text); }
+.seg-mini button.on { background: var(--surface-3); color: var(--text); }
+.candle-part.off .seg-mini { opacity: .35; }
 .study-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .chip-swatch { position: relative; display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 1px solid var(--border); cursor: pointer; }
 .chip-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer; }

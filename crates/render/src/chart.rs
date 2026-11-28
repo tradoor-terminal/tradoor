@@ -2113,6 +2113,11 @@ impl Chart {
         self.last_second = now.div_euclid(1000);
         let mut frame = std::mem::take(&mut self.frame);
         frame.begin(self.width, self.height, self.dpr, self.theme.background);
+        // A background in two colours: the theme's at the top, fading to this one at the foot.
+        let fade = self.styles.of("chart", "gradient");
+        if let Some(bottom) = fade.color.filter(|_| !fade.off) {
+            frame.gradient_rect(0.0, 0.0, self.width, self.height, self.theme.background, bottom);
+        }
         if self.width >= 40.0 && self.height >= 60.0 {
             // Profiles first: the time scale is warped to their widths.
             self.refresh_tpo();
@@ -2476,14 +2481,16 @@ impl Chart {
         let grid = self.styles.of("chart", "grid");
         if grid.width.is_some() && !grid.off {
             let color = grid.color.unwrap_or(t.border);
-            for pane in self.panes.iter().filter(|p| !p.over) {
+            // Which lines: 0 both, 1 the level ones alone, 2 the upright ones alone.
+            let axes = self.styles.number("chart", "gridAxes", 0.0);
+            for pane in self.panes.iter().filter(|p| !p.over && axes != 2.0) {
                 f.clip(Some(pane.plot));
                 for v in ticks::price_ticks(&pane.scale, 30.0) {
                     f.hline(0.0, plot_w, pane.scale.y(v) as f32, 1.0, color);
                 }
             }
             f.clip(None);
-            for (x, _) in &time_marks {
+            for (x, _) in time_marks.iter().filter(|_| axes != 1.0) {
                 f.vline(*x, 0.0, avail, 1.0, color);
             }
         }
@@ -5086,6 +5093,23 @@ mod tests {
         assert!(on >= 4 * 12, "a line at each price and time label: {on} vertices");
         c.set_styles("chart/grid=#00ffff,1,1");
         assert_eq!(lines(&mut c), 0, "switched off");
+        c.set_styles("chart/grid=#00ffff,1;chart/gridAxes=1");
+        let level = lines(&mut c);
+        c.set_styles("chart/grid=#00ffff,1;chart/gridAxes=2");
+        let upright = lines(&mut c);
+        assert!(level > 0 && upright > 0 && level + upright == on, "levels {level} and uprights {upright} make the whole grid {on}");
+    }
+
+    #[test]
+    fn a_background_can_fade_to_a_second_colour() {
+        let mut c = chart();
+        let foot = Color::hex(0x102030);
+        let has = |c: &mut Chart| c.render(1_800_000_000_000).colors.chunks(4).any(|v| v[..3] == [foot.r, foot.g, foot.b]);
+        assert!(!has(&mut c));
+        c.set_styles("chart/gradient=#102030,1");
+        assert!(has(&mut c));
+        c.set_styles("chart/gradient=#102030,1,1");
+        assert!(!has(&mut c), "switched off");
     }
 
     #[test]
