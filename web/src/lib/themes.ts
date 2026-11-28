@@ -215,6 +215,47 @@ export const THEMES: readonly ThemePreset[] = [
       'ui.scheme': 'light',
     },
   },
+  {
+    id: 'midnight-calm',
+    name: 'Midnight Calm',
+    note: 'Deep navy, white and sky-blue candles, a grid',
+    colors: {
+      background: '#161434', border: '#2A2660', text: '#8B8BA7', crosshair: '#8B8BA7', labelBackground: '#25224F',
+      bull: '#FFFFFF', bear: '#5B9CF6', ribbonFast: '#FFFFFF', ribbonSlow: '#5B9CF6', ema200: '#FFB74D',
+      tpo: '#5B9CF6', tpoOutside: '#3E3A78', tpoPoc: '#FFFFFF',
+      drawing: '#9C8CFF', drawingSelected: '#C9C0FF', ...TV_STUDIES,
+      grid: '1', gridColor: '#221F4A',
+      'ui.primary': '#5B9CF6', 'ui.bg': '#100E28', 'ui.surface': '#161434', 'ui.border': '#2A2660', 'ui.text': '#E2E2F0', 'ui.bull': '#FFFFFF', 'ui.bear': '#5B9CF6',
+    },
+  },
+  {
+    id: 'binance',
+    name: 'Binance',
+    note: "The exchange's app: slate, green and red, yellow lines",
+    colors: {
+      background: '#202630', border: '#333B47', text: '#929AA5', crosshair: '#5E6673', labelBackground: '#333B47',
+      bull: '#2EBD85', bear: '#F6465D', ribbonFast: '#2EBD85', ribbonSlow: '#F6465D', ema200: '#8B68C4',
+      tpo: '#C99400', tpoOutside: '#4A5260', tpoPoc: '#EAECEF',
+      drawing: '#F0B90B', drawingSelected: '#FCD535',
+      study0: '#F0B90B', study1: '#E840B5', study2: '#8B68C4', study3: '#2DBCD4', study4: '#F6845D', study5: '#6FD08C',
+      grid: '1', gridColor: '#333B47',
+      'ui.primary': '#F0B90B', 'ui.bg': '#181A20', 'ui.surface': '#202630', 'ui.border': '#333B47', 'ui.text': '#EAECEF', 'ui.bull': '#2EBD85', 'ui.bear': '#F6465D',
+    },
+  },
+  {
+    id: 'bybit',
+    name: 'Bybit',
+    note: "The exchange's app: black, green and red, a faint grid",
+    colors: {
+      background: '#000000', border: '#1E1E1E', text: '#9E9E9E', crosshair: '#6B6B6B', labelBackground: '#1E1E1E',
+      bull: '#06C167', bear: '#F63649', ribbonFast: '#06C167', ribbonSlow: '#F63649', ema200: '#8A63D2',
+      tpo: '#C78500', tpoOutside: '#3A3A3A', tpoPoc: '#EFEFEF',
+      drawing: '#F7A600', drawingSelected: '#FFCB66',
+      study0: '#E4AF27', study1: '#E05BB0', study2: '#8A63D2', study3: '#43AFC4', study4: '#E5534B', study5: '#7BC96F',
+      grid: '1', gridColor: '#1E1E1E',
+      'ui.primary': '#F7A600', 'ui.bg': '#000000', 'ui.surface': '#0B0B0D', 'ui.border': '#1E1E1E', 'ui.text': '#EAEAEA', 'ui.bull': '#06C167', 'ui.bear': '#F63649',
+    },
+  },
 ];
 
 /** The theme `theme` is exactly, or null once a colour of it was changed by hand. */
