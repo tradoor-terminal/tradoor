@@ -85,11 +85,12 @@ pub enum Group {
     Formula(u8),
 }
 
-/// The panes formulas draw in, by name, and their lines', fills' and marks' keys.
+/// The panes formulas draw in, by name, and their lines', fills' and marks' keys: one each for
+/// as many as a script may draw (32 lines, 16 fills, 16 marks), and a line more for its candles' close.
 pub const FORMULA_PANES: [&str; 8] = ["fx0", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7"];
-pub const FORMULA_LINES: [&str; 16] = ["p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15"];
-pub const FORMULA_FILLS: [&str; 8] = ["f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7"];
-pub const FORMULA_MARKS: [&str; 8] = ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7"];
+pub const FORMULA_LINES: [&str; 33] = ["p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15", "p16", "p17", "p18", "p19", "p20", "p21", "p22", "p23", "p24", "p25", "p26", "p27", "p28", "p29", "p30", "p31", "p32"];
+pub const FORMULA_FILLS: [&str; 16] = ["f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "f13", "f14", "f15"];
+pub const FORMULA_MARKS: [&str; 16] = ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11", "m12", "m13", "m14", "m15"];
 
 impl Group {
     pub fn as_str(self) -> &'static str {

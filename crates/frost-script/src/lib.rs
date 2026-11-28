@@ -51,6 +51,8 @@ pub const MAX_CHOICES: usize = 16;
 pub const MAX_PLOTS: usize = 32;
 pub const MAX_FILLS: usize = 16;
 pub const MAX_MARKS: usize = 16;
+// The chart keys each line, fill and mark a script draws for its style, and its candles' close as a line more.
+const _: () = assert!(tradoor_core::studies::FORMULA_LINES.len() > MAX_PLOTS && tradoor_core::studies::FORMULA_FILLS.len() >= MAX_FILLS && tradoor_core::studies::FORMULA_MARKS.len() >= MAX_MARKS);
 pub const MAX_BACKGROUNDS: usize = 4;
 /// Variables, counting each use of a function's own.
 pub const MAX_VARS: usize = 1_000;
