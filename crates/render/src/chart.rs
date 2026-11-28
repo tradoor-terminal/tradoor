@@ -1063,6 +1063,7 @@ impl Chart {
         let small = |s: &str| s.parse::<u8>().unwrap_or(0);
         let colours = |xs: &[f64]| -> Vec<u32> { xs.iter().map(|v| if *v >= 0.0 && *v <= 4_294_967_295.0 { *v as u32 } else { 0 }).collect() };
         let text = |s: &str| s.replace('\u{1f}', "\n");
+        let mut marks = 0;
         for row in meta.lines() {
             let f: Vec<&str> = row.split('\t').collect();
             match f.as_slice() {
@@ -1158,7 +1159,9 @@ impl Chart {
                 }
                 ["mark", above, color, text] => {
                     let Some(hits) = take(n) else { return };
-                    let plot = FORMULA_MARKS[study.markers.len().min(FORMULA_MARKS.len() - 1)];
+                    // Its style by its place among the script's marks, not by how often those before it hit.
+                    let plot = FORMULA_MARKS[marks.min(FORMULA_MARKS.len() - 1)];
+                    marks += 1;
                     let tone = Tone::Rgba(int(color));
                     for (i, hit) in hits.iter().enumerate() {
                         // The forming bar's too, past the closed ones, now that formulas run over it.
@@ -5397,6 +5400,37 @@ mod tests {
         c.set_formula("fx-k", "Mine", "pane\t1\nplot\tline\t0\t15\t0\t0\t0\tNone\n", &values[..n], false);
         let none = c.render(1_800_000_000_000).positions.len();
         assert!(candles > none && bars > none, "{candles} and {bars} against {none}");
+    }
+
+    #[test]
+    fn a_formula_keeps_a_style_for_each_line_fill_and_mark_it_may_draw() {
+        let mut c = chart();
+        let n = c.candles().len();
+        // As many as a script may draw: 32 lines and its candles, 16 fills, the last between lines 31 and 32, and 16 marks.
+        let (mut meta, mut values) = (String::from("pane\t1\n"), Vec::new());
+        for k in 0..32 {
+            meta += &format!("plot\tline\t-\t15\t0\t0\t0\tLine {k}\n");
+            values.extend((0..n).map(|i| (i + k) as f64));
+        }
+        meta += "candles\t0\t0\t0\t0\tCandles\n";
+        values.extend((0..4 * n).map(|i| 100.0 + (i % n) as f64));
+        for k in 0..16 {
+            meta += &format!("fill\t{}\t{}\t0\n", 2 * k, 2 * k + 1);
+        }
+        // The first mark hits on every bar; the others keep their own styles all the same.
+        for k in 0..16 {
+            meta += &format!("mark\t1\t0\tMark {k}\n");
+            values.extend((0..n).map(|i| if k == 0 || i == k { 1.0 } else { 0.0 }));
+        }
+        c.set_formula("fx-many", "Many", &meta, &values, false);
+        let study = c.formulas.iter().find(|s| s.id == "fx-many").expect("kept");
+        let distinct = |keys: Vec<&str>| keys.into_iter().collect::<std::collections::HashSet<_>>().len();
+        assert_eq!((study.lines.len(), distinct(study.lines.iter().map(|l| l.key).collect())), (33, 33), "a style each, the candles' close too");
+        assert_eq!(study.fills.len(), 16, "a fill between lines past the 16th is drawn");
+        assert_eq!((study.fills[15].upper, study.fills[15].lower), ("p30", "p31"));
+        assert_eq!(distinct(study.fills.iter().map(|f| f.key).collect()), 16);
+        let mark = |text: &str| study.markers.iter().find(|m| m.text == text).map(|m| m.plot);
+        assert_eq!((mark("Mark 0"), mark("Mark 1"), mark("Mark 15")), (Some("m0"), Some("m1"), Some("m15")));
     }
 
     #[test]
